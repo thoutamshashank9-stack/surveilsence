@@ -1,0 +1,63 @@
+# Camera & Stream Configuration
+cameras:
+  # Test with a local video file first (no camera needed)
+  - id: "test_video"
+    source: "data/test_video.mp4"  # Will use mock detector if file doesn't exist
+    zones:
+      - name: "entrance"
+        type: "line"
+        points: [[100, 500], [400, 500]]
+      - name: "shelf_a"
+        type: "polygon"
+        points: [[500, 200], [700, 200], [700, 400], [500, 400]]
+      - name: "checkout"
+        type: "polygon"
+        points: [[800, 400], [1000, 400], [1000, 600], [800, 600]]
+      - name: "worker_cabin"
+        type: "polygon"
+        points: [[50, 50], [200, 50], [200, 200], [50, 200]]
+
+  # Your Phone (IP Webcam App for Android / EpocCam for iOS)
+  # Uncomment and update the IP address when ready
+  # - id: "phone_cam_01"
+  #   source: "http://192.168.1.XX:8080/video"
+  #   zones:
+  #     - name: "entrance"
+  #       type: "line"
+  #       points: [[100, 500], [400, 500]]
+  #     - name: "shelf_a"
+  #       type: "polygon"
+  #       points: [[500, 200], [700, 200], [700, 400], [500, 400]]
+    
+  # Real IP Camera (Hikvision / Dahua / TP-Link)
+  # Uncomment and update when ready
+  # - id: "rtsp_cam_01"
+  #   source: "rtsp://admin:password123@192.168.1.XX:554/stream1"
+  #   zones: [...]
+
+# Model Configuration
+model:
+  type: "mock"       # Options: "rfdetr", "mock" (use "mock" for instant testing)
+  size: "rfdetr-medium"
+  confidence: 0.45
+  device: "cuda"     # Options: "cuda", "cpu"
+
+# Tracking Configuration
+tracking:
+  algorithm: "byte_track"
+  track_thresh: 0.5
+  track_buffer: 30
+  match_thresh: 0.8
+
+# Logging & Storage
+logging:
+  db_path: "data/events.db"
+  jsonl_path: "data/events.jsonl"
+  text_log_path: "data/system.log"
+
+# Business Logic Rules
+rules:
+  worker_cabin_min_seconds: 60  # Time in cabin to be classified as 'worker'
+  business_hours:
+    start: "08:00"
+    end: "22:00"
