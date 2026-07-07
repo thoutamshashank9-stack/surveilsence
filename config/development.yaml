@@ -1,0 +1,126 @@
+# ============================================
+# Development Configuration
+# ============================================
+
+app:
+  name: "Edge AI CCTV Analytics"
+  version: "0.1.0"
+  debug: true
+
+# Camera Sources
+cameras:
+  - id: "cam_01"
+    name: "Main Entrance"
+    source: "../data/test_video.mp4"
+    type: "file"
+    enabled: true
+    stream_type: "main"
+    fps_cap: 30
+    zones:
+      - name: "entrance_line"
+        type: "line"
+        points: [[100, 400], [540, 400]]
+        direction: "horizontal"
+      - name: "lobby"
+        type: "polygon"
+        points: [[50, 200], [590, 200], [590, 450], [50, 450]]
+        restricted: true
+      - name: "checkout"
+        type: "polygon"
+        points: [[400, 100], [600, 100], [600, 300], [400, 300]]
+      - name: "restricted_area"
+        type: "polygon"
+        points: [[10, 10], [200, 10], [200, 150], [10, 150]]
+        restricted: true
+
+  # Uncomment for phone camera (IP Webcam app)
+  # - id: "phone_cam"
+  #   name: "Phone Camera"
+  #   source: "http://192.168.1.100:8080/video"
+  #   type: "http"
+  #   enabled: false
+
+  # Uncomment for RTSP camera
+  # - id: "rtsp_cam"
+  #   name: "IP Camera"
+  #   source: "rtsp://admin:password@192.168.1.64:554/stream1"
+  #   type: "rtsp"
+  #   enabled: false
+
+# Inference Settings
+inference:
+  backend: "auto"                     # auto, cpu, cuda, directml, openvino
+  detection:
+    model: "rtdetrv2_r18"
+    model_path: "../models/registry/detection/rtdetrv2_r18vd.onnx"
+    confidence_threshold: 0.35
+    input_size: [640, 640]
+    classes:
+      - 0   # person
+    max_detections: 100
+  tracking:
+    algorithm: "bytetrack"
+    track_activation_threshold: 0.25
+    lost_track_buffer: 30
+    minimum_matching_threshold: 0.8
+    frame_rate: 30
+    minimum_consecutive_frames: 1
+
+# Alert Rules
+alerts:
+  intrusion:
+    enabled: true
+    zones: ["restricted_area"]
+    cooldown_seconds: 300
+    severity: "critical"
+  loitering:
+    enabled: true
+    threshold_seconds: 60
+    zones: ["lobby", "checkout"]
+    cooldown_seconds: 300
+    severity: "warning"
+  line_crossing:
+    enabled: true
+    lines: ["entrance_line"]
+    cooldown_seconds: 10
+    severity: "info"
+  dwell_no_checkout:
+    enabled: true
+    threshold_seconds: 120
+    cooldown_seconds: 300
+    severity: "warning"
+
+# Analytics
+analytics:
+  heatmap_resolution: [64, 48]
+  aggregation_interval_minutes: 60
+  retention_days: 90
+
+# Database
+database:
+  url: "sqlite+aiosqlite:///./data/events.db"
+  echo: false
+
+# Notifications
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+
+# Logging
+logging:
+  level: "INFO"
+  format: "console"                   # console or json
+  file: "data/system.log"
+
+# VLM (Phase 2)
+vlm:
+  enabled: false
+  model: "smolvlm-256m"
+  endpoint: "http://localhost:11434"   # Ollama
+  timeout_seconds: 10

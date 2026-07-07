@@ -1,0 +1,23 @@
+# Generic RTSP Camera Profile
+connection:
+  transport: "tcp"              # tcp or udp
+  timeout_seconds: 10
+  reconnect_delay_seconds: 5
+  max_reconnect_attempts: -1    # -1 = infinite
+  buffer_size: 1                # frames (1 = lowest latency)
+
+streams:
+  main:
+    path: "/stream1"
+    resolution: "2560x1440"
+    fps: 25
+    codec: "h264"
+  sub:
+    path: "/stream2"
+    resolution: "640x480"
+    fps: 15
+    codec: "h264"
+
+health:
+  check_interval_seconds: 30
+  max_stale_frames_seconds: 10

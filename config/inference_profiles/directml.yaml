@@ -1,0 +1,4 @@
+# ONNX Runtime DirectML Provider (AMD/Intel/NVIDIA on Windows)
+provider: "DmlExecutionProvider"
+options:
+  device_id: 0

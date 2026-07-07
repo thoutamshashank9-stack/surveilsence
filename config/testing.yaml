@@ -1,0 +1,46 @@
+# Testing Configuration — Uses mock camera and mock detector
+app:
+  name: "Edge AI CCTV Analytics (Test)"
+  version: "0.1.0"
+  debug: true
+
+cameras:
+  - id: "test_cam"
+    name: "Test Camera"
+    source: "mock"
+    type: "mock"
+    enabled: true
+    fps_cap: 10
+    zones: []
+
+inference:
+  backend: "cpu"
+  detection:
+    model: "mock"
+    confidence_threshold: 0.35
+    input_size: [640, 640]
+    classes: [0]
+    max_detections: 100
+  tracking:
+    algorithm: "bytetrack"
+    track_activation_threshold: 0.25
+    lost_track_buffer: 30
+    minimum_matching_threshold: 0.8
+    frame_rate: 10
+    minimum_consecutive_frames: 1
+
+alerts:
+  intrusion:
+    enabled: false
+  loitering:
+    enabled: false
+  line_crossing:
+    enabled: false
+
+database:
+  url: "sqlite+aiosqlite:///./data/test_events.db"
+  echo: false
+
+logging:
+  level: "DEBUG"
+  format: "console"

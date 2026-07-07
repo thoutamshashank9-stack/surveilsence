@@ -1,0 +1,10 @@
+# ============================================
+# GPU-Specific Dependencies (NVIDIA CUDA)
+# ============================================
+
+# Replace onnxruntime with GPU version
+# pip uninstall onnxruntime
+onnxruntime-gpu>=1.18.0
+
+# TensorRT (optional, NVIDIA only)
+# tensorrt>=10.0.0

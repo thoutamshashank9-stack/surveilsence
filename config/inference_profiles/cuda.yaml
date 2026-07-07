@@ -1,0 +1,8 @@
+# ONNX Runtime CUDA Provider (NVIDIA GPU)
+provider: "CUDAExecutionProvider"
+options:
+  device_id: 0
+  arena_extend_strategy: "kSameAsRequested"
+  gpu_mem_limit: 2147483648  # 2GB
+  cudnn_conv_algo_search: "DEFAULT"
+  do_copy_in_default_stream: true

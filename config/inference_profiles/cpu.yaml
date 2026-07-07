@@ -1,0 +1,7 @@
+# ONNX Runtime CPU Provider
+provider: "CPUExecutionProvider"
+options:
+  intra_op_num_threads: 4
+  inter_op_num_threads: 2
+  execution_mode: "sequential"
+  graph_optimization_level: "ORT_ENABLE_ALL"

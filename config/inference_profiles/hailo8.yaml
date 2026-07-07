@@ -1,0 +1,10 @@
+# Hailo-8 M.2 AI Accelerator Configuration Profile
+backend: "hailo"
+model_format: "hef"
+model_path: "../models/registry/detection/rtdetrv2_r18.hef"
+device_id: "pcie_0"
+batch_size: 1
+vstream_params:
+  precision: "int8"
+  input_format: "rgb8"
+  output_format: "float32"

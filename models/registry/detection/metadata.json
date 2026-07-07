@@ -1,0 +1,15 @@
+{
+  "models": [
+    {
+      "name": "rtdetrv2_r18vd",
+      "file": "rtdetrv2_r18vd.onnx",
+      "input_size": [
+        640,
+        640
+      ],
+      "classes": 80,
+      "license": "Apache-2.0",
+      "description": "RT-DETRv2 R18 - Real-Time Detection Transformer (Apache-2.0)"
+    }
+  ]
+}

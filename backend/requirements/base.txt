@@ -1,0 +1,43 @@
+# ============================================
+# Core Dependencies
+# ============================================
+
+# Web Framework
+fastapi>=0.115.0
+uvicorn[standard]>=0.30.0
+python-multipart>=0.0.9
+
+# Data Validation
+pydantic>=2.7.0
+pydantic-settings>=2.3.0
+
+# Database
+sqlalchemy[asyncio]>=2.0.30
+aiosqlite>=0.20.0
+
+# Configuration
+pyyaml>=6.0.1
+
+# Logging
+structlog>=24.1.0
+
+# HTTP Client
+httpx>=0.27.0
+aiofiles>=24.1.0
+
+# Computer Vision
+opencv-python-headless>=4.10.0
+numpy>=1.26.0
+
+# Tracking & Detection Utilities
+supervision>=0.22.0
+
+# Geometry (Zone calculations)
+shapely>=2.0.0
+
+# Scheduling
+apscheduler>=3.10.0
+
+# Utilities
+python-dateutil>=2.9.0
+orjson>=3.10.0

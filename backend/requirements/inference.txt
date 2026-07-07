@@ -1,0 +1,18 @@
+# ============================================
+# Inference Dependencies (CPU + DirectML)
+# ============================================
+
+# ONNX Runtime — install ONE of these:
+# CPU only:
+onnxruntime>=1.18.0
+# DirectML (Windows AMD/Intel GPU):
+# pip install onnxruntime-directml>=1.18.0
+# CUDA (NVIDIA GPU):
+# pip install onnxruntime-gpu>=1.18.0
+
+# Math / Filtering
+scipy>=1.13.0
+filterpy>=1.4.5
+
+# ByteTrack standalone (future migration from supervision)
+# trackers>=0.2.0
