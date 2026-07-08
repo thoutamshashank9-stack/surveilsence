@@ -1,6 +1,7 @@
 import time
 import asyncio
 import threading
+import numpy as np
 from typing import Dict, List, Set, Tuple, Any, Optional
 import supervision as sv
 

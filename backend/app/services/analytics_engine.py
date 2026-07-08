@@ -9,7 +9,7 @@ from app.models.tracking import TrackSummary, TrackCoordinate
 from app.models.enums import EventType
 from app.schemas.analytics import (
     FootfallMetrics, HourlyFootfallItem, DwellMetrics, DwellZoneItem, 
-    ZoneAnalytics, ZoneStatus, HeatmapData, HeatmapPoint
+    ZoneAnalytics, ZoneStatus, HeatmapData, HeatmapPoint, BusinessAnalytics
 )
 from app.core.logging import get_logger
 
@@ -224,4 +224,88 @@ class AnalyticsEngine:
             camera_id=camera_id,
             resolution=self.settings.analytics.heatmap_resolution,
             points=points_list
+        )
+
+    async def get_business_analytics(self, db: AsyncSession, camera_id: str, date_str: str) -> BusinessAnalytics:
+        """Query conversion rates, worker hours, and peak occupancy per zone for a camera on a specific date."""
+        try:
+            start_date = datetime.strptime(date_str, "%Y-%m-%d")
+        except ValueError:
+            start_date = datetime.utcnow().replace(hour=0, minute=0, second=0, microsecond=0)
+            
+        end_date = start_date + timedelta(days=1)
+
+        # 1. Conversion Rate:
+        # total unique tracks that visited checkout
+        q_checkout = select(func.count(func.distinct(Event.track_id))).where(
+            and_(
+                Event.camera_id == camera_id,
+                Event.zone_name == "checkout",
+                Event.event_type == EventType.ZONE_EXIT,
+                Event.timestamp >= start_date,
+                Event.timestamp < end_date
+            )
+        )
+        checkout_visitors = (await db.execute(q_checkout)).scalar() or 0
+        
+        # total footfall entries
+        q_entries = select(func.count()).where(
+            and_(
+                Event.camera_id == camera_id,
+                Event.event_type == EventType.LINE_CROSS,
+                Event.metadata_json["direction"].as_string() == "in",
+                Event.timestamp >= start_date,
+                Event.timestamp < end_date
+            )
+        )
+        entries = (await db.execute(q_entries)).scalar() or 0
+        
+        conversion_rate = (checkout_visitors / entries * 100.0) if entries > 0 else 0.0
+
+        # 2. Worker Hours:
+        # sum duration_seconds for worker_cabin zone exits
+        q_workers = select(func.sum(Event.duration_seconds)).where(
+            and_(
+                Event.camera_id == camera_id,
+                Event.zone_name == "worker_cabin",
+                Event.event_type == EventType.ZONE_EXIT,
+                Event.timestamp >= start_date,
+                Event.timestamp < end_date
+            )
+        )
+        total_seconds = (await db.execute(q_workers)).scalar() or 0.0
+        worker_hours = float(total_seconds / 3600.0)
+
+        # 3. Peak Occupancy per zone:
+        cam_zones = []
+        for cam_cfg in self.settings.cameras:
+            if cam_cfg.id == camera_id:
+                cam_zones = cam_cfg.zones
+                break
+                
+        peak_occupancy = {}
+        for zone in cam_zones:
+            q_coords = select(TrackCoordinate.timestamp, TrackCoordinate.track_id).where(
+                and_(
+                    TrackCoordinate.camera_id == camera_id,
+                    TrackCoordinate.zone_name == zone.name,
+                    TrackCoordinate.timestamp >= start_date,
+                    TrackCoordinate.timestamp < end_date
+                )
+            )
+            res = await db.execute(q_coords)
+            bins = {}
+            for r in res.fetchall():
+                ts_key = r[0].replace(microsecond=0)
+                if ts_key not in bins:
+                    bins[ts_key] = set()
+                bins[ts_key].add(r[1])
+            peak_occupancy[zone.name] = max([len(s) for s in bins.values()]) if bins else 0
+
+        return BusinessAnalytics(
+            camera_id=camera_id,
+            date=date_str,
+            conversion_rate=round(conversion_rate, 2),
+            worker_hours=round(worker_hours, 2),
+            peak_occupancy=peak_occupancy
         )

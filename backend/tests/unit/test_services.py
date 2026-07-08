@@ -162,9 +162,34 @@ async def test_analytics_engine_queries(db_session):
     assert footfall.total_entries == 1
     assert footfall.total_exits == 1
     
-    # 4. Query heatmap
+    # 4. Populate events for business conversion & worker hours
+    db_session.add(Event(
+        camera_id="cam_01",
+        timestamp=datetime.utcnow() - timedelta(minutes=4),
+        event_type=EventType.ZONE_EXIT,
+        track_id=101,
+        zone_name="checkout",
+        duration_seconds=30.0
+    ))
+    db_session.add(Event(
+        camera_id="cam_01",
+        timestamp=datetime.utcnow() - timedelta(minutes=3),
+        event_type=EventType.ZONE_EXIT,
+        track_id=103,
+        zone_name="worker_cabin",
+        duration_seconds=7200.0  # 2 hours
+    ))
+    
+    await db_session.commit()
+
+    # 5. Query heatmap
     heatmap = await engine.get_heatmap_data(db_session, "cam_01", hours_ago=1)
     assert len(heatmap.points) == 1
     assert heatmap.points[0].x == 250.0
     assert heatmap.points[0].y == 350.0
     assert heatmap.points[0].intensity == 1.0
+
+    # 6. Query business metrics
+    biz = await engine.get_business_analytics(db_session, "cam_01", today_str)
+    assert biz.conversion_rate == 100.0  # 1 checkout visitor / 1 entry = 100%
+    assert biz.worker_hours == 2.0       # 7200s / 3600 = 2.0 hours

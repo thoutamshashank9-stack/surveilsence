@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.deps import get_db, get_analytics_engine
 from app.database import get_db
 from app.services.analytics_engine import AnalyticsEngine
-from app.schemas.analytics import FootfallMetrics, DwellMetrics, ZoneAnalytics, HeatmapData
+from app.schemas.analytics import FootfallMetrics, DwellMetrics, ZoneAnalytics, HeatmapData, BusinessAnalytics
 
 router = APIRouter()
 
@@ -95,3 +95,14 @@ async def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": f"attachment; filename=cctv_analytics_{camera_id}_{date}.csv"}
     )
+
+@router.get("/business", response_model=BusinessAnalytics, summary="Get business analytics metrics (conversion rate, worker hours)")
+async def get_business_analytics(
+    camera_id: str = Query(..., description="Camera ID"),
+    date: str = Query(None, description="Date in YYYY-MM-DD format"),
+    db: AsyncSession = Depends(get_db),
+    engine: AnalyticsEngine = Depends(get_analytics_engine)
+):
+    if not date:
+        date = datetime.utcnow().strftime("%Y-%m-%d")
+    return await engine.get_business_analytics(db, camera_id, date)

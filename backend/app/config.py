@@ -72,6 +72,31 @@ class LoggingConfig(BaseModel):
     format: str = "console"
     file: Optional[str] = "data/system.log"
 
+class AnalyticsConfig(BaseModel):
+    heatmap_resolution: List[int] = [64, 48]
+    aggregation_interval_minutes: int = 60
+    retention_days: int = 90
+
+class TelegramConfig(BaseModel):
+    enabled: bool = False
+    bot_token: str = ""
+    chat_id: str = ""
+
+class EmailConfig(BaseModel):
+    enabled: bool = False
+    smtp_host: str = ""
+    smtp_port: int = 587
+
+class NotificationConfig(BaseModel):
+    telegram: TelegramConfig = TelegramConfig()
+    email: EmailConfig = EmailConfig()
+
+class VLMConfig(BaseModel):
+    enabled: bool = False
+    model: str = "smolvlm-256m"
+    endpoint: str = "http://localhost:11434"
+    timeout_seconds: int = 10
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -83,6 +108,9 @@ class Settings(BaseSettings):
     cameras: List[CameraConfigItem] = []
     inference: InferenceConfig = InferenceConfig()
     alerts: AlertConfig = AlertConfig()
+    analytics: AnalyticsConfig = AnalyticsConfig()
+    notifications: NotificationConfig = NotificationConfig()
+    vlm: VLMConfig = VLMConfig()
     database: DatabaseConfig = DatabaseConfig()
     logging: LoggingConfig = LoggingConfig()
     config_path: str = Field(default="config/development.yaml", validation_alias="CONFIG_PATH")

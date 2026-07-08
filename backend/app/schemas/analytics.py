@@ -46,7 +46,15 @@ class HeatmapData(BaseModel):
     resolution: List[int]
     points: List[HeatmapPoint]
 
+class BusinessAnalytics(BaseModel):
+    camera_id: str
+    date: str
+    conversion_rate: float
+    worker_hours: float
+    peak_occupancy: Dict[str, int]
+
 class AnalyticsResponse(BaseModel):
     footfall: FootfallMetrics
     dwell: DwellMetrics
     zones: ZoneAnalytics
+    business: BusinessAnalytics

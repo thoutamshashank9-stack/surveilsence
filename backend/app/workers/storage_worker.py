@@ -20,6 +20,8 @@ class StorageWorker:
     def __init__(self, settings: Settings, event_bus: EventBus):
         self.settings = settings
         self.event_bus = event_bus
+        from app.services.notification_service import NotificationService
+        self.notification_service = NotificationService(settings)
         
         self.event_buffer: List[Dict[str, Any]] = []
         self.alert_buffer: List[Dict[str, Any]] = []
@@ -163,6 +165,7 @@ class StorageWorker:
                 # 3. Write alerts
                 for a_data in alerts_to_write:
                     db.add(Alert(**a_data))
+                    asyncio.create_task(self.notification_service.send_alert_notification(a_data))
                     
                 await db.commit()
                 logger.debug("Database buffer flushed successfully", 
