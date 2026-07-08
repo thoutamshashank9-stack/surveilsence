@@ -38,6 +38,19 @@ Camera Sources ──▶ Frame Decoder ──▶ RT-DETRv2 (ONNX) ──▶ Byte
 
 ## Quick Start
 
+The fastest way to deploy the entire platform (frontend, backend, database, configuration, and VLM/camera mocks) is using **Docker Compose**:
+
+```bash
+docker compose up --build
+```
+Once started:
+- Access the React GUI Dashboard at: [http://localhost:80](http://localhost:80)
+- Access the FastAPI Swagger Documentation at: [http://localhost:8000/docs](http://localhost:8000/docs)
+
+For more detailed setup options, refer to the [Deployment Guide](docs/deployment.md).
+
+### Local Bare-Metal Installation
+
 ### Prerequisites
 - Python 3.11 or 3.12
 - Node.js 18+
