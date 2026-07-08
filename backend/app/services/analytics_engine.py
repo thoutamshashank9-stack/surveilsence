@@ -127,7 +127,7 @@ class AnalyticsEngine:
             ).where(
                 and_(
                     Event.camera_id == camera_id,
-                    Event.event_type == EventType.DWELL_END,
+                    Event.event_type == EventType.ZONE_EXIT,
                     Event.zone_name == zone,
                     Event.timestamp >= start_date,
                     Event.timestamp < end_date

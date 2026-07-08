@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ShieldAlert, RefreshCw, Filter } from 'lucide-react';
 import api from '../services/api';
+import { Alert } from '../types';
 import useAlertStore from '../store/alertStore';
 import AlertCard from '../components/alerts/AlertCard';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -46,6 +47,17 @@ export const Alerts: React.FC = () => {
       setStats(resStats);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleVlmExplain = async (id: number) => {
+    try {
+      const updated = await api.explainAlertVLM(id);
+      // Map and set new array directly
+      const updatedAlerts = alerts.map((a: Alert) => a.id === id ? updated : a);
+      setAlerts(updatedAlerts);
+    } catch (err) {
+      console.error("VLM explain error:", err);
     }
   };
 
@@ -147,6 +159,7 @@ export const Alerts: React.FC = () => {
               key={alert.id}
               alert={alert}
               onAcknowledge={handleAcknowledge}
+              onVlmExplain={handleVlmExplain}
             />
           ))}
         </div>

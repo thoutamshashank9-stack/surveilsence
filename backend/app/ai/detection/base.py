@@ -18,7 +18,7 @@ class MockDetector(DetectorBase):
         self.start_time = time.time()
 
     def detect(self, frame: np.ndarray) -> sv.Detections:
-        """Simulate two people moving inside the screen frame."""
+        """Simulate multiple classes (person, vehicle, fire) moving inside the screen frame."""
         h, w, _ = frame.shape
         t = time.time() - self.start_time
         
@@ -27,18 +27,29 @@ class MockDetector(DetectorBase):
         cy1 = int(h * 0.4 + (h * 0.2) * (0.5 + 0.5 * np.cos(t * 0.15)))
         bw1, bh1 = 60, 140
         
-        # Person 2 (moving up and down checkout area)
+        # Vehicle 1 (moving across bottom of checkout/lobby area)
         cx2 = int(w * 0.7 + (w * 0.1) * np.sin(t * 0.2))
         cy2 = int(h * 0.3 + (h * 0.4) * (0.5 + 0.5 * np.sin(t * 0.08)))
-        bw2, bh2 = 55, 130
+        bw2, bh2 = 90, 80
         
-        xyxy = np.array([
+        # Simulate fire detection in top-left restricted area periodically
+        fire_active = (int(t) % 30) > 15
+        
+        boxes = [
             [cx1 - bw1 // 2, cy1 - bh1 // 2, cx1 + bw1 // 2, cy1 + bh1 // 2],
             [cx2 - bw2 // 2, cy2 - bh2 // 2, cx2 + bw2 // 2, cy2 + bh2 // 2]
-        ], dtype=np.float32)
+        ]
+        scores = [0.92, 0.87]
+        labels = [0, 2] # 0 = person, 2 = vehicle
         
-        confidence = np.array([0.92, 0.87], dtype=np.float32)
-        class_id = np.array([0, 0], dtype=np.int32)
+        if fire_active:
+            boxes.append([40, 40, 120, 120])
+            scores.append(0.96)
+            labels.append(80) # 80 = fire
+            
+        xyxy = np.array(boxes, dtype=np.float32)
+        confidence = np.array(scores, dtype=np.float32)
+        class_id = np.array(labels, dtype=np.int32)
         
         # Keep inside bounds
         xyxy[:, [0, 2]] = np.clip(xyxy[:, [0, 2]], 0, w)

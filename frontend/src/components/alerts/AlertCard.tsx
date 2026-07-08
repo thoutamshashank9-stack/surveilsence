@@ -1,16 +1,18 @@
 import React, { useState } from 'react';
-import { AlertTriangle, ShieldCheck, Clock } from 'lucide-react';
+import { AlertTriangle, ShieldCheck, Clock, Eye, Loader2 } from 'lucide-react';
 import { Alert } from '../../types';
 
 interface AlertCardProps {
   alert: Alert;
   onAcknowledge?: (id: number, acknowledged_by: string, notes?: string) => Promise<void>;
+  onVlmExplain?: (id: number) => Promise<void>;
 }
 
-export const AlertCard: React.FC<AlertCardProps> = ({ alert, onAcknowledge }) => {
+export const AlertCard: React.FC<AlertCardProps> = ({ alert, onAcknowledge, onVlmExplain }) => {
   const [ackName, setAckName] = useState<string>('operator');
   const [showAckForm, setShowAckForm] = useState<boolean>(false);
   const [loading, setLoading] = useState<boolean>(false);
+  const [vlmLoading, setVlmLoading] = useState<boolean>(false);
 
   const getBorderColor = () => {
     switch (alert.severity) {
@@ -115,14 +117,48 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onAcknowledge }) =>
         {alert.status === 'active' ? (
           <>
             {!showAckForm ? (
-              <button 
-                className="btn btn-ghost"
-                style={{ padding: '6px 12px', fontSize: '0.75rem' }}
-                onClick={() => setShowAckForm(true)}
-              >
-                <AlertTriangle size={14} />
-                <span>Acknowledge Alert</span>
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  className="btn btn-ghost"
+                  style={{ padding: '6px 12px', fontSize: '0.75rem' }}
+                  onClick={() => setShowAckForm(true)}
+                >
+                  <AlertTriangle size={14} />
+                  <span>Acknowledge Alert</span>
+                </button>
+                {onVlmExplain && (
+                  <button
+                    className="btn btn-ghost"
+                    style={{ 
+                      padding: '6px 12px', 
+                      fontSize: '0.75rem', 
+                      borderColor: 'var(--accent-purple)', 
+                      color: 'var(--accent-purple)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '4px'
+                    }}
+                    disabled={vlmLoading}
+                    onClick={async () => {
+                      setVlmLoading(true);
+                      try {
+                        await onVlmExplain(alert.id);
+                      } catch (err) {
+                        console.error(err);
+                      } finally {
+                        setVlmLoading(false);
+                      }
+                    }}
+                  >
+                    {vlmLoading ? (
+                      <Loader2 size={14} style={{ animation: 'spin 1.5s linear infinite' }} />
+                    ) : (
+                      <Eye size={14} />
+                    )}
+                    <span>{vlmLoading ? 'Verifying...' : 'VLM Describe'}</span>
+                  </button>
+                )}
+              </div>
             ) : (
               <form onSubmit={handleAcknowledgeSubmit} style={{ display: 'flex', gap: '8px', width: '100%' }}>
                 <input 

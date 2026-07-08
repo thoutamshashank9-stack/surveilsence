@@ -33,8 +33,13 @@ async def db_session(tmp_path: Path) -> AsyncGenerator[AsyncSession, None]:
         echo=False,
     )
 
-    # Import Base after path setup
+    # Import Base and models after path setup
     from app.database import Base
+    from app.models.camera import Camera
+    from app.models.event import Event
+    from app.models.alert import Alert
+    from app.models.tracking import TrackSummary, TrackCoordinate
+    from app.models.zone import Zone
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

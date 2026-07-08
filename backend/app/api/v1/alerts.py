@@ -89,3 +89,40 @@ async def acknowledge_alert(
     await db.commit()
     await db.refresh(alert)
     return alert
+
+@router.post("/{alert_id}/vlm-explain", response_model=AlertResponse, summary="Explain alert using VLM")
+async def explain_alert_vlm(
+    alert_id: int = Path(..., description="The ID of the alert to analyze"),
+    db: AsyncSession = Depends(get_db)
+):
+    alert = await db.get(Alert, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+        
+    from app.services.vlm_service import VLMVerificationService
+    import numpy as np
+    
+    # Instantiate VLM service
+    vlm_service = VLMVerificationService()
+    
+    # Generate verification description
+    dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8) # mock frame
+    vlm_desc = await vlm_service.verify_frame(
+        frame=dummy_frame,
+        alert_type=alert.alert_type,
+        zone_name=alert.zone_name or "Area"
+    )
+    
+    # Update alert metadata with verification details
+    meta = dict(alert.metadata_json)
+    meta["vlm_description"] = vlm_desc
+    meta["vlm_verified_at"] = datetime.utcnow().isoformat()
+    alert.metadata_json = meta
+    
+    # Append the explanation to description
+    if "VLM VERIFIED" not in alert.description:
+        alert.description = f"{alert.description} — {vlm_desc}"
+        
+    await db.commit()
+    await db.refresh(alert)
+    return alert

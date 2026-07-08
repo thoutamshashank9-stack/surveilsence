@@ -93,6 +93,14 @@ export const api = {
     return handleResponse<Alert>(res);
   },
 
+  async explainAlertVLM(id: number): Promise<Alert> {
+    const res = await fetch(`${API_BASE}/alerts/${id}/vlm-explain`, {
+      method: 'POST',
+      headers: getHeaders()
+    });
+    return handleResponse<Alert>(res);
+  },
+
   async getAlertStats(): Promise<any> {
     const res = await fetch(`${API_BASE}/alerts/stats`, { headers: getHeaders() });
     return handleResponse<any>(res);

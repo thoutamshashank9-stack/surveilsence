@@ -130,6 +130,38 @@ class AlertManager:
             if key[0] == camera_id and key not in active_keys:
                 self.dwell_starts.pop(key)
 
+        # 4. Evaluate Safety / Threat Detections
+        if detections.tracker_id is not None:
+            for idx, class_id in enumerate(detections.class_id):
+                track_id = int(detections.tracker_id[idx])
+                if class_id == 80:  # Fire
+                    if not in_cooldown("fire_detected", track_id, 300):
+                        trigger_alert(
+                            alert_type="safety",
+                            severity="critical",
+                            track_id=track_id,
+                            zone_name="camera_field",
+                            desc=f"CRITICAL SAFETY THREAT: Fire detected in viewport!"
+                        )
+                elif class_id == 81:  # Smoke
+                    if not in_cooldown("smoke_detected", track_id, 300):
+                        trigger_alert(
+                            alert_type="safety",
+                            severity="critical",
+                            track_id=track_id,
+                            zone_name="camera_field",
+                            desc=f"CRITICAL SAFETY THREAT: Smoke detected in viewport!"
+                        )
+                elif class_id == 82:  # Weapon
+                    if not in_cooldown("weapon_detected", track_id, 300):
+                        trigger_alert(
+                            alert_type="safety",
+                            severity="critical",
+                            track_id=track_id,
+                            zone_name="camera_field",
+                            desc=f"SECURITY THREAT: Weapon detected in viewport!"
+                        )
+
         # Periodic cleanup of old cooldown keys (older than 24 hours) to prevent memory leak
         for key, ts in list(self.cooldowns.items()):
             if curr_time - ts > 86400:

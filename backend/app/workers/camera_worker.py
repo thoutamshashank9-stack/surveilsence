@@ -45,6 +45,7 @@ class CameraWorker:
         
         # Tracks current zone occupancy: track_id -> set of zone names
         self.track_zones: Dict[int, Set[str]] = {}
+        self.track_roles: Dict[int, str] = {}
         
         self.running = False
         self.thread: Optional[threading.Thread] = None
@@ -123,6 +124,19 @@ class CameraWorker:
 
     async def _publish_frame_analysis(self, tracked: sv.Detections) -> None:
         """Publish detections for frontend real-time tracking display."""
+        CLASS_MAPPINGS = {
+            0: "person",
+            1: "vehicle",
+            2: "vehicle",
+            3: "vehicle",
+            5: "vehicle",
+            7: "vehicle",
+            80: "fire",
+            81: "smoke",
+            82: "weapon",
+            83: "PPE"
+        }
+        
         detections_list = []
         if tracked.tracker_id is not None:
             for idx, box in enumerate(tracked.xyxy):
@@ -130,10 +144,15 @@ class CameraWorker:
                 class_id = int(tracked.class_id[idx])
                 conf = float(tracked.confidence[idx])
                 
+                class_name = CLASS_MAPPINGS.get(class_id, "person")
+                role = self.track_roles.get(track_id, "customer")
+                
                 # Anchor coordinates
                 detections_list.append({
                     "track_id": track_id,
                     "class_id": class_id,
+                    "class_name": class_name,
+                    "role": role,
                     "confidence": conf,
                     "box": {
                         "x1": float(box[0]),
@@ -222,6 +241,8 @@ class CameraWorker:
             entries = current_zones - prev_zones
             
             for zone_name in entries:
+                if zone_name == "worker_cabin":
+                    self.track_roles[track_id] = "worker"
                 await self.event_bus.publish(
                     EventType.ZONE_ENTRY,
                     {
