@@ -1,0 +1,105 @@
+# ============================================
+# Production Configuration
+# ============================================
+
+app:
+  name: "Edge AI CCTV Analytics"
+  version: "0.1.0"
+  debug: false
+
+# Camera Sources
+cameras:
+  - id: "cam_01"
+    name: "Main Entrance"
+    source: "../data/test_video.mp4"
+    type: "file"
+    enabled: true
+    stream_type: "main"
+    fps_cap: 30
+    zones:
+      - name: "entrance_line"
+        type: "line"
+        points: [[100, 400], [540, 400]]
+        direction: "horizontal"
+      - name: "lobby"
+        type: "polygon"
+        points: [[50, 200], [590, 200], [590, 450], [50, 450]]
+        restricted: true
+      - name: "checkout"
+        type: "polygon"
+        points: [[400, 100], [600, 100], [600, 300], [400, 300]]
+      - name: "restricted_area"
+        type: "polygon"
+        points: [[10, 10], [200, 10], [200, 150], [10, 150]]
+        restricted: true
+
+# Inference Settings
+inference:
+  backend: "auto"
+  detection:
+    model: "rtdetrv2_r18"
+    model_path: "models/registry/detection/rtdetrv2_r18vd.onnx"
+    confidence_threshold: 0.40
+    input_size: [640, 640]
+    classes:
+      - 0   # person
+      - 2   # vehicle
+      - 80  # fire
+      - 81  # smoke
+      - 82  # weapon
+    max_detections: 100
+  tracking:
+    algorithm: "bytetrack"
+    track_activation_threshold: 0.25
+    lost_track_buffer: 30
+    minimum_matching_threshold: 0.8
+    frame_rate: 30
+    minimum_consecutive_frames: 2
+
+# Alert Rules
+alerts:
+  intrusion:
+    enabled: true
+    zones: ["restricted_area"]
+    cooldown_seconds: 120
+    severity: "critical"
+  loitering:
+    enabled: true
+    threshold_seconds: 60
+    zones: ["lobby", "checkout"]
+    cooldown_seconds: 180
+    severity: "warning"
+  line_crossing:
+    enabled: true
+    lines: ["entrance_line"]
+    cooldown_seconds: 10
+    severity: "info"
+  dwell_no_checkout:
+    enabled: true
+    threshold_seconds: 120
+    cooldown_seconds: 180
+    severity: "warning"
+
+# Analytics
+analytics:
+  heatmap_resolution: [64, 48]
+  aggregation_interval_minutes: 60
+  retention_days: 90
+
+# Database
+database:
+  url: "sqlite+aiosqlite:///./data/events.db"
+  echo: false
+
+# Logging
+logging:
+  level: "WARNING"
+  format: "json"
+  file: "data/system.log"
+
+# VLM (Phase 2)
+vlm:
+  enabled: true
+  model: "smolvlm-256m"
+  endpoint: "http://localhost:11434"
+  timeout_seconds: 10
