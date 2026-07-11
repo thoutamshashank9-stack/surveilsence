@@ -11,6 +11,7 @@ from app.services.camera_manager import CameraManager
 from app.models.camera import Camera
 from app.models.enums import CameraStatus
 from app.schemas.camera import CameraResponse, CameraCreate, CameraUpdate
+from pydantic import BaseModel, Field
 from app.utils.video import frame_to_jpeg
 from app.core.logging import get_logger
 
@@ -110,3 +111,41 @@ async def stream_camera(
         frame_generator(),
         media_type="multipart/x-mixed-replace; boundary=frame"
     )
+
+class CalibrationRequest(BaseModel):
+    pixel_points: List[List[float]] = Field(..., description="4 points in pixel coordinates [[x,y], ...]")
+    world_points: List[List[float]] = Field(..., description="4 points in ground plane meters [[X,Y], ...]")
+
+@router.post("/{camera_id}/calibrate", summary="Calibrate camera homography projection matrix")
+async def calibrate_camera(
+    camera_id: str = Path(..., description="The ID of the camera to calibrate"),
+    payload: CalibrationRequest = None,
+    db: AsyncSession = Depends(get_db)
+):
+    camera = await db.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+
+    if len(payload.pixel_points) != 4 or len(payload.world_points) != 4:
+        raise HTTPException(status_code=400, detail="Calibration requires exactly 4 point matches")
+
+    from app.ai.postprocessing.homography import HomographyCalibrator
+    calibrator = HomographyCalibrator()
+    success = calibrator.calibrate(payload.pixel_points, payload.world_points)
+    if not success:
+        raise HTTPException(status_code=400, detail="Homography calibration failed. Points might be collinear or invalid.")
+
+    # Update camera's homography config in database
+    cfg = dict(camera.config_json or {})
+    cfg["homography"] = {
+        "enabled": True,
+        "pixel_points": payload.pixel_points,
+        "world_points": payload.world_points,
+        "matrix_H": calibrator.H.tolist()
+    }
+    camera.config_json = cfg
+    await db.commit()
+    
+    logger.info("Camera homography matrix calibrated and saved", camera_id=camera_id)
+    return {"status": "success", "matrix_H": calibrator.H.tolist()}
+

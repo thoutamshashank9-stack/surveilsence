@@ -38,8 +38,13 @@ class CameraWorker:
         self.alert_manager = alert_manager
         
         self.camera_id = config.id
-        self.zone_engine = ZoneEngine(config.zones)
-        self.vlm_service = VLMVerificationService()
+        self.alert_manager._init_camera_classifiers(self.camera_id)
+        v_tracker = self.alert_manager.velocity_trackers.get(self.camera_id)
+        h_calib = v_tracker.homography if v_tracker else None
+
+        self.zone_engine = ZoneEngine(config.zones, homography=h_calib)
+        self.vlm_service = VLMVerificationService(settings)
+
         
         # Track position history for line crossing: track_id -> (last_x, last_y)
         self.last_positions: Dict[int, Tuple[float, float]] = {}

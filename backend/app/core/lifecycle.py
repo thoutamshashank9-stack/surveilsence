@@ -75,7 +75,16 @@ async def lifespan(app: FastAPI):
     storage_worker = StorageWorker(settings, event_bus)
     await storage_worker.start()
     app.state.storage_worker = storage_worker
+    
+    # Parquet Serializer (OLAP archiver)
+    from app.storage.parquet_serializer import ParquetSerializer
+    parquet_serializer = ParquetSerializer(settings)
+    if settings.storage.parquet_enabled:
+        parquet_serializer.start()
+    app.state.parquet_serializer = parquet_serializer
+    
     app.state.camera_workers = {}
+
     
     # 5. Load and initialize cameras from config
     from sqlalchemy import select
@@ -148,6 +157,8 @@ async def lifespan(app: FastAPI):
     await camera_manager.stop_all()
     
     # Stop workers
+    if hasattr(app.state, "parquet_serializer"):
+        await app.state.parquet_serializer.stop()
     await storage_worker.stop()
     
     # Stop Event Bus

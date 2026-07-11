@@ -4,7 +4,7 @@ import onnxruntime as ort
 import supervision as sv
 from typing import List, Optional
 
-from app.ai.detection.base import DetectorBase
+from app.ai.detection.base import DetectorBase, ModelCapabilities
 from app.ai.backends.base import InferenceBackendBase
 from app.ai.preprocessing.letterbox import prepare_input
 from app.core.exceptions import InferenceError
@@ -107,3 +107,12 @@ class RTDetrDetector(DetectorBase):
             "input_size": self.input_size,
             "provider": self.backend.get_provider_name()
         }
+
+    def get_capabilities(self) -> ModelCapabilities:
+        res = self.input_size[0] if isinstance(self.input_size, (list, tuple)) else self.input_size
+        return ModelCapabilities(
+            supports_nms_free=False,
+            input_resolution=int(res),
+            max_batch_size=1
+        )
+

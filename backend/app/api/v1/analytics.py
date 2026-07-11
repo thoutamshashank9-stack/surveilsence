@@ -106,3 +106,26 @@ async def get_business_analytics(
     if not date:
         date = datetime.utcnow().strftime("%Y-%m-%d")
     return await engine.get_business_analytics(db, camera_id, date)
+
+from pydantic import BaseModel, Field
+from app.api.deps import get_alert_manager
+from app.services.alert_manager import AlertManager
+
+class POSScanRequest(BaseModel):
+    camera_id: str = Field(..., description="Camera ID mapping to POS terminal")
+    timestamp: float = Field(..., description="Timestamp of barcode scan event")
+    upc: str = Field(..., description="Scanned barcode value")
+    cashier_id: Optional[str] = None
+
+@router.post("/pos/scan", summary="Receive real-time POS scan event for sweethearting validation")
+async def pos_scan_webhook(
+    payload: POSScanRequest,
+    alert_manager: AlertManager = Depends(get_alert_manager)
+):
+    alert_manager.register_pos_scan(
+        camera_id=payload.camera_id,
+        timestamp=payload.timestamp,
+        upc=payload.upc
+    )
+    return {"status": "event_registered"}
+

@@ -3,11 +3,14 @@ from shapely.geometry import Point, Polygon, LineString
 import supervision as sv
 import numpy as np
 
+from app.ai.postprocessing.homography import HomographyCalibrator
+
 class ZoneEngine:
-    def __init__(self, camera_zones_config: List[Any]):
+    def __init__(self, camera_zones_config: List[Any], homography: Optional[HomographyCalibrator] = None):
         self.polygons: Dict[str, Polygon] = {}
         self.lines: Dict[str, LineString] = {}
         self.zone_metadata: Dict[str, Dict[str, Any]] = {}
+        self.homography = homography
         
         self._load_zones(camera_zones_config)
 
@@ -26,21 +29,25 @@ class ZoneEngine:
                 "direction": direction
             }
 
+            # Map points to ground-plane meters if homography calibration is active
+            if self.homography and self.homography.is_calibrated():
+                transformed_points = [self.homography.pixel_to_world(p[0], p[1]) for p in points]
+            else:
+                transformed_points = points
+
             if z_type == "polygon":
-                if len(points) >= 3:
-                    self.polygons[name] = Polygon(points)
+                if len(transformed_points) >= 3:
+                    self.polygons[name] = Polygon(transformed_points)
             elif z_type == "line":
-                if len(points) == 2:
-                    self.lines[name] = LineString(points)
+                if len(transformed_points) == 2:
+                    self.lines[name] = LineString(transformed_points)
 
     def evaluate_zones(
         self,
         detections: sv.Detections
     ) -> Dict[str, Set[int]]:
         """
-        Evaluate polygon zone occupancy.
-        Returns:
-            Dict[str, Set[int]]: Map of zone_name -> set of track_ids inside.
+        Evaluate polygon zone occupancy in homography-corrected meter space (if calibrated).
         """
         zone_states: Dict[str, Set[int]] = {name: set() for name in self.polygons.keys()}
         
@@ -54,7 +61,11 @@ class ZoneEngine:
             bx = (bbox[0] + bbox[2]) / 2
             by = bbox[3]  # bottom
             
-            point = Point(bx, by)
+            if self.homography and self.homography.is_calibrated():
+                wx, wy = self.homography.pixel_to_world(bx, by)
+                point = Point(wx, wy)
+            else:
+                point = Point(bx, by)
             
             for zone_name, poly in self.polygons.items():
                 if poly.contains(point):
@@ -69,17 +80,23 @@ class ZoneEngine:
         curr_pos: Tuple[float, float]
     ) -> List[Tuple[str, str]]:
         """
-        Check if a track crossed any line zone.
-        Returns:
-            List[Tuple[str, str]]: List of (line_name, direction) crossings.
+        Check if a track crossed any line zone, transformed via homography (if calibrated).
         """
         crossings = []
-        movement_line = LineString([prev_pos, curr_pos])
+        
+        if self.homography and self.homography.is_calibrated():
+            w_prev = self.homography.pixel_to_world(prev_pos[0], prev_pos[1])
+            w_curr = self.homography.pixel_to_world(curr_pos[0], curr_pos[1])
+        else:
+            w_prev = prev_pos
+            w_curr = curr_pos
+
+        movement_line = LineString([w_prev, w_curr])
         
         for name, line in self.lines.items():
             if line.intersects(movement_line):
                 # Calculate crossing direction
-                direction = self._calculate_crossing_direction(line, prev_pos, curr_pos)
+                direction = self._calculate_crossing_direction(line, w_prev, w_curr)
                 crossings.append((name, direction))
                 
         return crossings
@@ -113,3 +130,4 @@ class ZoneEngine:
             return "in"
         else:
             return "out"
+

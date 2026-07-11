@@ -22,6 +22,7 @@ async def test_end_to_end_analytics_pipeline():
         
         # 2. Register a camera
         headers = {"X-API-Key": "dev-secret-key-12345"}
+        client.delete("/api/v1/cameras/e2e_cam_01", headers=headers)
         camera_data = {
             "id": "e2e_cam_01",
             "name": "E2E Lobby Camera",

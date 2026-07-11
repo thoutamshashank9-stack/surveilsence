@@ -1,7 +1,14 @@
 import time
+from dataclasses import dataclass
 import numpy as np
 from abc import ABC, abstractmethod
 import supervision as sv
+
+@dataclass
+class ModelCapabilities:
+    supports_nms_free: bool = False
+    input_resolution: int = 640
+    max_batch_size: int = 1
 
 class DetectorBase(ABC):
     @abstractmethod
@@ -10,6 +17,10 @@ class DetectorBase(ABC):
 
     @abstractmethod
     def get_model_info(self) -> dict:
+        pass
+
+    @abstractmethod
+    def get_capabilities(self) -> ModelCapabilities:
         pass
 
 class MockDetector(DetectorBase):
@@ -68,3 +79,10 @@ class MockDetector(DetectorBase):
             "classes": ["person"],
             "license": "Public Domain"
         }
+
+    def get_capabilities(self) -> ModelCapabilities:
+        return ModelCapabilities(
+            supports_nms_free=True,
+            input_resolution=640,
+            max_batch_size=4
+        )

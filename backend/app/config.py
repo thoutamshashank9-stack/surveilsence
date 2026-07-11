@@ -11,12 +11,23 @@ class AppConfig(BaseModel):
     version: str = "0.1.0"
     debug: bool = True
 
+class DoubleLineConfig(BaseModel):
+    enabled: bool = False
+    line_separation_px: int = 30
+    max_crossing_time_seconds: float = 3.0
+
 class CameraZoneConfig(BaseModel):
     name: str
     type: str  # polygon, line
     points: List[List[int]]
     direction: Optional[str] = None  # horizontal, vertical (for line crossing)
     restricted: bool = False
+    double_line: DoubleLineConfig = DoubleLineConfig()
+
+class HomographyConfig(BaseModel):
+    enabled: bool = False
+    pixel_points: List[List[float]] = []
+    world_points: List[List[float]] = []
 
 class CameraConfigItem(BaseModel):
     id: str
@@ -27,6 +38,13 @@ class CameraConfigItem(BaseModel):
     stream_type: str = "sub"
     fps_cap: int = 30
     zones: List[CameraZoneConfig] = []
+    homography: HomographyConfig = HomographyConfig()
+
+class SAHIConfig(BaseModel):
+    enabled: bool = False
+    slice_height: int = 640
+    slice_width: int = 640
+    overlap_ratio: float = 0.2
 
 class DetectionConfig(BaseModel):
     model: str = "rtdetrv2_r18"
@@ -35,6 +53,18 @@ class DetectionConfig(BaseModel):
     input_size: List[int] = [640, 640]
     classes: List[int] = [0]
     max_detections: int = 100
+    sahi: SAHIConfig = SAHIConfig()
+
+class ReIDConfig(BaseModel):
+    enabled: bool = False
+    model_path: str = ""
+    embedding_dim: int = 512
+    match_threshold: float = 0.6
+
+class CrossCameraConfig(BaseModel):
+    enabled: bool = False
+    reid: ReIDConfig = ReIDConfig()
+    transition_time_seconds: Dict[str, float] = {}
 
 class TrackingConfig(BaseModel):
     algorithm: str = "bytetrack"
@@ -43,11 +73,19 @@ class TrackingConfig(BaseModel):
     minimum_matching_threshold: float = 0.8
     frame_rate: int = 30
     minimum_consecutive_frames: int = 1
+    cross_camera: CrossCameraConfig = CrossCameraConfig()
+
+class DirectMLConfig(BaseModel):
+    session_per_camera: bool = True
+    enable_graph_surgery: bool = True
+    max_batch_size: int = 4
+    max_wait_ms: float = 10.0
 
 class InferenceConfig(BaseModel):
     backend: str = "auto"
     detection: DetectionConfig = DetectionConfig()
     tracking: TrackingConfig = TrackingConfig()
+    directml: DirectMLConfig = DirectMLConfig()
 
 class RuleConfig(BaseModel):
     enabled: bool = True
@@ -97,6 +135,41 @@ class VLMConfig(BaseModel):
     endpoint: str = "http://localhost:11434"
     timeout_seconds: int = 10
 
+class StorageConfig(BaseModel):
+    parquet_enabled: bool = False
+    parquet_flush_interval_minutes: int = 5
+    parquet_output_dir: str = "data/parquet"
+    duckdb_enabled: bool = False
+    duckdb_memory_limit: str = "2GB"
+    duckdb_threads: int = 4
+
+class SweetheartingRuleConfig(BaseModel):
+    enabled: bool = False
+    conveyor_zone: str = "conveyor"
+    bagging_zone: str = "bagging"
+    time_threshold: float = 3.0
+
+class ConcealmentRuleConfig(BaseModel):
+    enabled: bool = False
+    proximity_threshold: float = 0.3
+    pose_model: str = "yolov8n-pose.onnx"
+
+class VelocityLoiteringRuleConfig(BaseModel):
+    enabled: bool = False
+    dwell_threshold_seconds: float = 30.0
+    velocity_threshold_mps: float = 0.2
+
+class BehavioralConfig(BaseModel):
+    sweethearting: SweetheartingRuleConfig = SweetheartingRuleConfig()
+    concealment: ConcealmentRuleConfig = ConcealmentRuleConfig()
+    velocity_loitering: VelocityLoiteringRuleConfig = VelocityLoiteringRuleConfig()
+
+class LoRaConfig(BaseModel):
+    enabled: bool = False
+    frequency: int = 868000000
+    spreading_factor: int = 7
+    gpio_pins: Dict[str, int] = {}
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -113,7 +186,11 @@ class Settings(BaseSettings):
     vlm: VLMConfig = VLMConfig()
     database: DatabaseConfig = DatabaseConfig()
     logging: LoggingConfig = LoggingConfig()
+    storage: StorageConfig = StorageConfig()
+    behavioral: BehavioralConfig = BehavioralConfig()
+    lora: LoRaConfig = LoRaConfig()
     config_path: str = Field(default="config/development.yaml", validation_alias="CONFIG_PATH")
+
 
 @lru_cache()
 def get_settings() -> Settings:
