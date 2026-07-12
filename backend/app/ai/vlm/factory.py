@@ -6,6 +6,9 @@ from app.ai.vlm.base import VLMBackendBase
 from app.ai.vlm.ollama_backend import OllamaVLMBackend
 from app.ai.vlm.moondream_backend import MoondreamVLMBackend
 from app.ai.vlm.paligemma_backend import PaliGemmaVLMBackend
+from app.core.logging import get_logger
+
+logger = get_logger(__name__)
 
 class SimulatedVLMBackend(VLMBackendBase):
     """
@@ -69,4 +72,8 @@ def create_vlm_backend(config: VLMConfig) -> VLMBackendBase:
             timeout_seconds=config.timeout_seconds
         )
     
+    logger.warning(
+        "⚠️  VLM backend is SIMULATED — all visual verification results are synthetic. "
+        "Set vlm.backend to 'moondream2', 'paligemma', or 'ollama' in config for real inference."
+    )
     return SimulatedVLMBackend()

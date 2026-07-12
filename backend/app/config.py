@@ -131,7 +131,8 @@ class NotificationConfig(BaseModel):
 
 class VLMConfig(BaseModel):
     enabled: bool = False
-    model: str = "smolvlm-256m"
+    backend: str = "simulated"  # simulated | moondream2 | paligemma | ollama
+    model: str = "moondream2"
     endpoint: str = "http://localhost:11434"
     timeout_seconds: int = 10
 

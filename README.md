@@ -16,13 +16,13 @@ Camera Sources ──▶ Frame Decoder ──▶ RT-DETRv2 (ONNX) ──▶ Byte
 
 | Layer | Technology | License |
 |-------|-----------|---------|
-| Detection | RT-DETRv2 R18 (ONNX INT8) | Apache-2.0 |
+| Detection | RT-DETRv2 R18 / YOLO11n / YOLO26n / RF-DETR Nano (ONNX) | Apache-2.0 |
 | Tracking | ByteTrack | MIT |
-| VLM | SmolVLM-256M (GGUF) | Apache-2.0 |
-| Inference | ONNX Runtime (CPU/CUDA/DirectML/OpenVINO) | MIT |
+| VLM | Moondream2 / PaliGemma / Ollama (configurable backends) | Apache-2.0 |
+| Inference | ONNX Runtime (CPU/CUDA/DirectML/OpenVINO/Hailo-8) | MIT |
 | Backend | FastAPI + SQLAlchemy | MIT |
 | Frontend | React + TypeScript + Vite | MIT |
-| Database | SQLite (dev) / PostgreSQL + TimescaleDB (prod) | Public Domain / PostgreSQL |
+| Database | SQLite (OLTP) + DuckDB/Parquet (OLAP) | Public Domain |
 
 **100% commercial-safe** — zero AGPL/GPL runtime dependencies.
 

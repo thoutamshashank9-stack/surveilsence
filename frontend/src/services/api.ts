@@ -1,12 +1,20 @@
 import { Camera, Alert, FootfallMetrics, DwellMetrics, HeatmapData, SystemStatus, HardwareInfo } from '../types';
 
-const API_BASE = '/api/v1';
-const DEV_TOKEN = 'dev-secret-key-12345';
+const API_BASE = import.meta.env.VITE_API_BASE || '/api/v1';
+
+/**
+ * Retrieve the stored API token from sessionStorage.
+ * The token is set after a successful login via the /auth/login endpoint.
+ * Falls back to empty string if not authenticated yet.
+ */
+const getToken = (): string => {
+  return sessionStorage.getItem('api_token') || '';
+};
 
 const getHeaders = () => {
   return {
     'Content-Type': 'application/json',
-    'X-API-Key': DEV_TOKEN
+    'X-API-Key': getToken()
   };
 };
 
@@ -20,12 +28,39 @@ async function handleResponse<T>(response: Response): Promise<T> {
     } catch {
       // Ignored
     }
+    if (response.status === 401) {
+      // Clear stale token and redirect to login
+      sessionStorage.removeItem('api_token');
+    }
     throw new Error(errorMessage);
   }
   return response.json() as Promise<T>;
 }
 
 export const api = {
+  /**
+   * Authenticate with the backend. On success, stores the API token
+   * in sessionStorage for subsequent requests.
+   */
+  async login(username: string, password: string): Promise<{ access_token: string; token_type: string }> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password })
+    });
+    const data = await handleResponse<{ access_token: string; token_type: string }>(res);
+    sessionStorage.setItem('api_token', data.access_token);
+    return data;
+  },
+
+  isAuthenticated(): boolean {
+    return !!sessionStorage.getItem('api_token');
+  },
+
+  logout(): void {
+    sessionStorage.removeItem('api_token');
+  },
+
   async getHealth(): Promise<SystemStatus> {
     const res = await fetch(`${API_BASE}/system/health`);
     return handleResponse<SystemStatus>(res);

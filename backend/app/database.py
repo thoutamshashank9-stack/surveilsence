@@ -52,5 +52,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 async def init_db() -> None:
+    # Import all models to ensure they are registered on DeclarativeBase
+    from app.models.camera import Camera
+    from app.models.event import Event
+    from app.models.alert import Alert
+    from app.models.zone import Zone
+    from app.models.tracking import TrackSummary, TrackCoordinate
+    from app.models.analytics import HourlyAggregate
+
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

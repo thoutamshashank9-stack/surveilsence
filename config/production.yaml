@@ -97,9 +97,10 @@ logging:
   format: "json"
   file: "data/system.log"
 
-# VLM (Phase 2)
+# VLM (Visual Language Model)
 vlm:
   enabled: true
-  model: "smolvlm-256m"
+  backend: "ollama"                # simulated | moondream2 | paligemma | ollama
+  model: "moondream2"
   endpoint: "http://localhost:11434"
   timeout_seconds: 10

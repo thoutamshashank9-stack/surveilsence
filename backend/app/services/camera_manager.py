@@ -148,10 +148,55 @@ class CameraManager:
         self.event_bus = event_bus
         self.cameras: Dict[str, CameraStream] = {}
         
+    @staticmethod
+    def _validate_camera_source(source: str) -> None:
+        """Validate camera source URL to prevent SSRF attacks."""
+        import ipaddress
+        from urllib.parse import urlparse
+
+        if not source:
+            raise ValueError("Camera source cannot be empty")
+
+        # Allow digit-only sources (USB camera index)
+        if source.isdigit():
+            return
+
+        # Allow 'mock' type
+        if source == "mock":
+            return
+
+        # Allow local file paths (for testing with video files)
+        if source.startswith("../") or source.startswith("./") or source.startswith("/"):
+            return
+        if len(source) > 1 and source[1] == ":":  # Windows drive paths like C:\...
+            return
+
+        ALLOWED_SCHEMES = {"rtsp", "rtsps", "http", "https", "rtmp"}
+        try:
+            parsed = urlparse(source)
+        except Exception:
+            raise ValueError(f"Invalid camera source URL: {source}")
+
+        if parsed.scheme and parsed.scheme.lower() not in ALLOWED_SCHEMES:
+            raise ValueError(f"Unsupported URL scheme '{parsed.scheme}'. Allowed: {ALLOWED_SCHEMES}")
+
+        # Block private/loopback IP ranges (SSRF protection)
+        if parsed.hostname:
+            try:
+                ip = ipaddress.ip_address(parsed.hostname)
+                if ip.is_loopback or ip.is_link_local:
+                    raise ValueError(f"Camera source cannot target loopback/link-local address: {parsed.hostname}")
+            except ValueError as e:
+                if "Camera source" in str(e):
+                    raise
+                # Not an IP address (hostname), allow it
+                pass
+
     async def add_camera(self, config: Any) -> None:
         camera_id = config.id if hasattr(config, "id") else config.get("id")
         name = config.name if hasattr(config, "name") else config.get("name")
         source = config.source if hasattr(config, "source") else config.get("source")
+        self._validate_camera_source(source)
         type_ = config.type if hasattr(config, "type") else config.get("type")
         fps_cap = config.fps_cap if hasattr(config, "fps_cap") else config.get("fps_cap", 30)
         

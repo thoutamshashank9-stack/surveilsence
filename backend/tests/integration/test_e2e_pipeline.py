@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from fastapi.testclient import TestClient
 from app.main import app
 from app.models.enums import EventType
+from app.core.security import get_api_key
 
 @pytest.mark.asyncio
 async def test_end_to_end_analytics_pipeline():
@@ -21,7 +22,7 @@ async def test_end_to_end_analytics_pipeline():
         assert health_resp.json()["status"] == "healthy"
         
         # 2. Register a camera
-        headers = {"X-API-Key": "dev-secret-key-12345"}
+        headers = {"X-API-Key": get_api_key()}
         client.delete("/api/v1/cameras/e2e_cam_01", headers=headers)
         camera_data = {
             "id": "e2e_cam_01",

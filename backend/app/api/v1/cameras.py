@@ -133,6 +133,26 @@ async def delete_camera(
         worker = request.app.state.camera_workers.pop(camera_id, None)
         if worker:
             worker.stop()
+    
+    # Cascade-delete dependent records to avoid FK constraint violations
+    from sqlalchemy import delete as sa_delete
+    from app.models.event import Event
+    from app.models.alert import Alert
+    from app.models.zone import Zone
+    from app.models.tracking import TrackSummary, TrackCoordinate
+    
+    await db.execute(sa_delete(TrackCoordinate).where(TrackCoordinate.camera_id == camera_id))
+    await db.execute(sa_delete(TrackSummary).where(TrackSummary.camera_id == camera_id))
+    await db.execute(sa_delete(Alert).where(Alert.camera_id == camera_id))
+    await db.execute(sa_delete(Event).where(Event.camera_id == camera_id))
+    await db.execute(sa_delete(Zone).where(Zone.camera_id == camera_id))
+    
+    # Try analytics table (HourlyAggregate)
+    try:
+        from app.models.analytics import HourlyAggregate
+        await db.execute(sa_delete(HourlyAggregate).where(HourlyAggregate.camera_id == camera_id))
+    except Exception:
+        pass
             
     await db.delete(camera)
     await db.commit()
