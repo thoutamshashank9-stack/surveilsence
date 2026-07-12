@@ -125,9 +125,21 @@ class EmailConfig(BaseModel):
     smtp_host: str = ""
     smtp_port: int = 587
 
+class WhatsAppConfig(BaseModel):
+    enabled: bool = False
+    provider: str = "twilio"
+    api_key: str = ""
+    account_sid: str = ""
+    auth_token: str = ""
+    from_number: str = ""
+    to_number: str = ""
+    instance_id: str = ""
+    token: str = ""
+
 class NotificationConfig(BaseModel):
     telegram: TelegramConfig = TelegramConfig()
     email: EmailConfig = EmailConfig()
+    whatsapp: WhatsAppConfig = WhatsAppConfig()
 
 class VLMConfig(BaseModel):
     enabled: bool = False

@@ -3,6 +3,7 @@ import asyncio
 import threading
 import numpy as np
 from typing import Dict, List, Set, Tuple, Any, Optional
+from collections import deque
 import supervision as sv
 
 from app.config import CameraConfigItem, Settings
@@ -53,6 +54,9 @@ class CameraWorker:
         self.track_zones: Dict[int, Set[str]] = {}
         self.track_roles: Dict[int, str] = {}
         
+        # Rolling frame buffer for alerts: max 150 frames (5-10 seconds of video history)
+        self.frame_buffer = deque(maxlen=150)
+        
         self.running = False
         self.thread: Optional[threading.Thread] = None
 
@@ -88,6 +92,9 @@ class CameraWorker:
                 await asyncio.sleep(0.05)
                 continue
                 
+            # Append to rolling frame buffer
+            self.frame_buffer.append((time.time(), frame.copy()))
+                
             try:
                 # 2. Run Inference
                 detections = self.inference_manager.detect(frame)
@@ -115,10 +122,14 @@ class CameraWorker:
                 
                 # Emit alerts to database/event bus
                 for alert in alerts:
-                    if alert["alert_type"] in ["intrusion", "loitering"]:
-                        asyncio.create_task(self._run_vlm_verification_and_publish(alert, frame.copy()))
-                    else:
-                        await self.event_bus.publish(EventType.ALERT, alert)
+                    import uuid
+                    alert_uuid = uuid.uuid4().hex
+                    if "metadata_json" not in alert or alert["metadata_json"] is None:
+                        alert["metadata_json"] = {}
+                    alert["metadata_json"]["alert_uuid"] = alert_uuid
+                    
+                    # Save media screenshot + video clip and publish
+                    asyncio.create_task(self._save_media_and_publish_alert(alert, frame.copy()))
 
             except Exception as e:
                 logger.error("Error in camera processing loop", camera_id=self.camera_id, error=str(e))
@@ -308,3 +319,57 @@ class CameraWorker:
         finally:
             # Publish alert to the EventBus
             await self.event_bus.publish(EventType.ALERT, alert)
+
+    async def _save_media_and_publish_alert(self, alert: dict, frame: np.ndarray) -> None:
+        """Save alert screenshot and video clip non-blockingly, then publish."""
+        alert_uuid = alert["metadata_json"]["alert_uuid"]
+        frames_snapshot = list(self.frame_buffer)
+        
+        loop = asyncio.get_running_loop()
+        try:
+            screenshot_path, video_path = await loop.run_in_executor(
+                None,
+                self._save_alert_media_sync,
+                alert_uuid,
+                frame,
+                frames_snapshot,
+                self.config.fps_cap
+            )
+            alert["metadata_json"]["screenshot_path"] = screenshot_path
+            alert["metadata_json"]["video_path"] = video_path
+            logger.info("Saved alert media files", screenshot=screenshot_path, video=video_path)
+        except Exception as e:
+            logger.error("Failed to generate alert media files", error=str(e))
+            
+        # Continue with VLM verification if intrusion or loitering, else publish alert directly
+        if alert["alert_type"] in ["intrusion", "loitering"]:
+            await self._run_vlm_verification_and_publish(alert, frame)
+        else:
+            await self.event_bus.publish(EventType.ALERT, alert)
+
+    @staticmethod
+    def _save_alert_media_sync(alert_uuid: str, current_frame: np.ndarray, frame_list: list, fps: float) -> Tuple[str, str]:
+        import cv2
+        import os
+        
+        os.makedirs("data/alerts", exist_ok=True)
+        screenshot_path = f"data/alerts/{alert_uuid}_screenshot.jpg"
+        video_path = f"data/alerts/{alert_uuid}_clip.mp4"
+        
+        # Save screenshot
+        cv2.imwrite(screenshot_path, current_frame)
+        
+        # Save video clip
+        if frame_list:
+            h, w = current_frame.shape[:2]
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+            out = cv2.VideoWriter(video_path, fourcc, fps, (w, h))
+            for _, f in frame_list:
+                if f.shape[:2] == (h, w):
+                    out.write(f)
+                else:
+                    resized = cv2.resize(f, (w, h))
+                    out.write(resized)
+            out.release()
+            
+        return screenshot_path, video_path

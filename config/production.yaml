@@ -91,6 +91,26 @@ database:
   url: "sqlite+aiosqlite:///./data/events.db"
   echo: false
 
+# Notifications
+notifications:
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  email:
+    enabled: false
+    smtp_host: ""
+    smtp_port: 587
+  whatsapp:
+    enabled: false
+    provider: "twilio"
+    account_sid: ""
+    auth_token: ""
+    from_number: ""
+    to_number: ""
+    instance_id: ""
+    token: ""
+
 # Logging
 logging:
   level: "WARNING"

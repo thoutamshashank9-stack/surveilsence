@@ -1,4 +1,5 @@
 import smtplib
+import os
 from email.mime.text import MIMEText
 from typing import Dict, Any
 import httpx
@@ -14,13 +15,32 @@ class NotificationService:
 
     async def send_alert_notification(self, alert_data: Dict[str, Any]) -> None:
         """Send notifications across active configured channels."""
+        # Normalize dict representation (SQLAlchemy models mapped to dictionary keys)
+        data = alert_data
+        if hasattr(alert_data, "__table__"):
+            # It's an ORM object, extract dict representation
+            meta = alert_data.metadata_json or {}
+            data = {
+                "camera_id": alert_data.camera_id,
+                "alert_type": alert_data.alert_type,
+                "severity": alert_data.severity,
+                "zone_name": alert_data.zone_name,
+                "description": alert_data.description,
+                "timestamp": str(alert_data.timestamp),
+                "metadata_json": meta if isinstance(meta, dict) else {}
+            }
+
         # 1. Telegram channel
         if hasattr(self.settings, "notifications") and self.settings.notifications.telegram.enabled:
-            await self._send_telegram(alert_data)
+            await self._send_telegram(data)
             
-        # 2. Email SMTP channel
+        # 2. WhatsApp channel
+        if hasattr(self.settings, "notifications") and self.settings.notifications.whatsapp.enabled:
+            await self._send_whatsapp(data)
+
+        # 3. Email SMTP channel
         if hasattr(self.settings, "notifications") and self.settings.notifications.email.enabled:
-            await self._send_email(alert_data)
+            await self._send_email(data)
 
     async def _send_telegram(self, alert_data: Dict[str, Any]) -> None:
         token = self.settings.notifications.telegram.bot_token
@@ -37,20 +57,110 @@ class NotificationService:
             f"*Time*: {alert_data.get('timestamp')}"
         )
         
-        url = f"https://api.telegram.org/bot{token}/sendMessage"
-        try:
-            async with httpx.AsyncClient() as client:
+        meta = alert_data.get("metadata_json", {})
+        screenshot_path = meta.get("screenshot_path")
+        video_path = meta.get("video_path")
+        
+        async with httpx.AsyncClient() as client:
+            try:
+                # 1. Send Video Clip if available
+                if video_path and os.path.exists(video_path):
+                    url = f"https://api.telegram.org/bot{token}/sendVideo"
+                    with open(video_path, "rb") as video_file:
+                        files = {"video": video_file}
+                        data = {"chat_id": chat_id, "caption": msg, "parse_mode": "Markdown"}
+                        r = await client.post(url, data=data, files=files, timeout=30.0)
+                    if r.status_code == 200:
+                        logger.info("Telegram alert video clip sent successfully")
+                        return
+                    else:
+                        logger.error("Failed to send video via Telegram, attempting fallback", response=r.text)
+
+                # 2. Send Photo Screenshot if available
+                if screenshot_path and os.path.exists(screenshot_path):
+                    url = f"https://api.telegram.org/bot{token}/sendPhoto"
+                    with open(screenshot_path, "rb") as photo_file:
+                        files = {"photo": photo_file}
+                        data = {"chat_id": chat_id, "caption": msg, "parse_mode": "Markdown"}
+                        r = await client.post(url, data=data, files=files, timeout=15.0)
+                    if r.status_code == 200:
+                        logger.info("Telegram alert screenshot sent successfully")
+                        return
+                    else:
+                        logger.error("Failed to send photo via Telegram, attempting fallback", response=r.text)
+
+                # 3. Fallback to Text Message
+                url = f"https://api.telegram.org/bot{token}/sendMessage"
                 await client.post(url, json={
                     "chat_id": chat_id,
                     "text": msg,
                     "parse_mode": "Markdown"
                 }, timeout=5.0)
-            logger.info("Telegram alert notification sent successfully")
+                logger.info("Telegram alert text notification sent successfully")
+            except Exception as e:
+                logger.error("Failed to send Telegram notification", error=str(e))
+
+    async def _send_whatsapp(self, alert_data: Dict[str, Any]) -> None:
+        ws_cfg = self.settings.notifications.whatsapp
+        if not ws_cfg.account_sid or not ws_cfg.auth_token:
+            return
+            
+        msg = (
+            f"⚠️ *SURVEILSENCE SECURITY ALERT* ⚠️\n"
+            f"Severity: {alert_data.get('severity', '').upper()}\n"
+            f"Camera: {alert_data.get('camera_id')}\n"
+            f"Zone: {alert_data.get('zone_name') or 'N/A'}\n"
+            f"Description: {alert_data.get('description')}\n"
+            f"Time: {alert_data.get('timestamp')}"
+        )
+        
+        meta = alert_data.get("metadata_json", {})
+        screenshot_path = meta.get("screenshot_path")
+        
+        media_url = None
+        
+        # Twilio WhatsApp requires a public URL. Upload to free host if screenshot is present.
+        if screenshot_path and os.path.exists(screenshot_path):
+            try:
+                async with httpx.AsyncClient() as client:
+                    with open(screenshot_path, "rb") as f:
+                        files = {"file": f}
+                        r = await client.post("https://tmpfiles.org/api/v1/upload", files=files, timeout=15.0)
+                    if r.status_code == 200:
+                        view_url = r.json().get("data", {}).get("url")
+                        if view_url:
+                            # Convert view URL to direct download link
+                            media_url = view_url.replace("https://tmpfiles.org/", "https://tmpfiles.org/dl/")
+                            logger.info("Uploaded screenshot to temp host for WhatsApp Twilio media", media_url=media_url)
+            except Exception as e:
+                logger.error("Failed to upload WhatsApp screenshot to temp host", error=str(e))
+
+        url = f"https://api.twilio.com/2010-04-01/Accounts/{ws_cfg.account_sid}/Messages.json"
+        auth = (ws_cfg.account_sid, ws_cfg.auth_token)
+        
+        # Ensure To and From are prefixed correctly for Twilio WhatsApp
+        to_number = ws_cfg.to_number if ws_cfg.to_number.startswith("whatsapp:") else f"whatsapp:{ws_cfg.to_number}"
+        from_number = ws_cfg.from_number if ws_cfg.from_number.startswith("whatsapp:") else f"whatsapp:{ws_cfg.from_number}"
+        
+        data = {
+            "From": from_number,
+            "To": to_number,
+            "Body": msg
+        }
+        if media_url:
+            data["MediaUrl"] = media_url
+            
+        try:
+            async with httpx.AsyncClient() as client:
+                r = await client.post(url, data=data, auth=auth, timeout=10.0)
+            if r.status_code in [200, 201]:
+                logger.info("WhatsApp Twilio alert notification sent successfully")
+            else:
+                logger.error("Failed to send WhatsApp Twilio message", status=r.status_code, response=r.text)
         except Exception as e:
-            logger.error("Failed to send Telegram notification", error=str(e))
+            logger.error("Failed to send WhatsApp Twilio notification", error=str(e))
 
     async def _send_email(self, alert_data: Dict[str, Any]) -> None:
-        # Sync SMTP execution inside executor to avoid blocking the event loop
         import asyncio
         loop = asyncio.get_running_loop()
         try:
