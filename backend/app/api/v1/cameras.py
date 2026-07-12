@@ -1,6 +1,6 @@
 import asyncio
 from typing import List
-from fastapi import APIRouter, Depends, HTTPException, status, Path
+from fastapi import APIRouter, Depends, HTTPException, status, Path, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -36,6 +36,7 @@ async def get_camera(
 @router.post("", response_model=CameraResponse, status_code=status.HTTP_201_CREATED, summary="Add new camera")
 async def create_camera(
     payload: CameraCreate,
+    request: Request,
     db: AsyncSession = Depends(get_db),
     camera_manager: CameraManager = Depends(get_camera_manager)
 ):
@@ -66,11 +67,58 @@ async def create_camera(
     if camera.enabled:
         await camera_manager.add_camera(payload)
         
+        # Instantiate and start the CameraWorker processing thread
+        from app.workers.camera_worker import CameraWorker
+        from app.config import get_settings, CameraConfigItem, CameraZoneConfig
+        
+        settings = get_settings()
+        event_bus = request.app.state.event_bus
+        inference_manager = request.app.state.inference_manager
+        tracking_manager = request.app.state.tracking_manager
+        alert_manager = request.app.state.alert_manager
+        
+        zones_cfg = []
+        for z in payload.zones:
+            zones_cfg.append(CameraZoneConfig(
+                name=z.name,
+                type=z.type,
+                points=z.points,
+                direction=z.direction,
+                restricted=z.restricted
+            ))
+            
+        cam_config = CameraConfigItem(
+            id=payload.id,
+            name=payload.name,
+            source=payload.source,
+            type=payload.type.value if hasattr(payload.type, "value") else str(payload.type),
+            enabled=payload.enabled,
+            stream_type=payload.stream_type,
+            fps_cap=payload.fps_cap,
+            zones=zones_cfg
+        )
+        
+        worker = CameraWorker(
+            config=cam_config,
+            settings=settings,
+            event_bus=event_bus,
+            camera_manager=camera_manager,
+            inference_manager=inference_manager,
+            tracking_manager=tracking_manager,
+            alert_manager=alert_manager
+        )
+        worker.start()
+        
+        if not hasattr(request.app.state, "camera_workers"):
+            request.app.state.camera_workers = {}
+        request.app.state.camera_workers[payload.id] = worker
+        
     return camera
 
 @router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete camera")
 async def delete_camera(
     camera_id: str = Path(..., description="The ID of the camera to delete"),
+    request: Request = None,
     db: AsyncSession = Depends(get_db),
     camera_manager: CameraManager = Depends(get_camera_manager)
 ):
@@ -79,6 +127,13 @@ async def delete_camera(
         raise HTTPException(status_code=404, detail="Camera not found")
         
     await camera_manager.remove_camera(camera_id)
+    
+    # Stop and remove worker
+    if request and hasattr(request.app.state, "camera_workers"):
+        worker = request.app.state.camera_workers.pop(camera_id, None)
+        if worker:
+            worker.stop()
+            
     await db.delete(camera)
     await db.commit()
 
