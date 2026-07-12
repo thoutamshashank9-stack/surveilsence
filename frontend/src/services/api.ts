@@ -71,6 +71,20 @@ export const api = {
     return handleResponse<HardwareInfo>(res);
   },
 
+  async getNotifications(): Promise<any> {
+    const res = await fetch(`${API_BASE}/system/notifications`, { headers: getHeaders() });
+    return handleResponse<any>(res);
+  },
+
+  async updateNotifications(config: any): Promise<any> {
+    const res = await fetch(`${API_BASE}/system/notifications`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(config)
+    });
+    return handleResponse<any>(res);
+  },
+
   async getCameras(): Promise<Camera[]> {
     const res = await fetch(`${API_BASE}/cameras`, { headers: getHeaders() });
     return handleResponse<Camera[]>(res);

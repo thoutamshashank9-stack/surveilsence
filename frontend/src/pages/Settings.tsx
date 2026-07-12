@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Video, ShieldCheck, Plus, Trash2, X, AlertTriangle, Edit2 } from 'lucide-react';
+import { Cpu, Video, ShieldCheck, Plus, Trash2, X, AlertTriangle, Edit2, Bell } from 'lucide-react';
 import api from '../services/api';
 import { Camera, HardwareInfo, CameraType } from '../types';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -26,12 +26,47 @@ export const Settings: React.FC = () => {
     fps_cap: 30,
   });
 
+  // Global Notification States
+  const [notificationsConfig, setNotificationsConfig] = useState({
+    telegram: { enabled: false, bot_token: '', chat_id: '' },
+    whatsapp: { enabled: false, provider: 'twilio', account_sid: '', auth_token: '', from_number: '', to_number: '', instance_id: '', token: '' },
+    email: { enabled: false, smtp_host: '', smtp_port: 587 }
+  });
+  const [savingNotifications, setSavingNotifications] = useState<boolean>(false);
+  const [notificationMessage, setNotificationMessage] = useState<string>('');
+  const [notificationError, setNotificationError] = useState<string>('');
+
   const fetchSettings = async () => {
     try {
       const cams = await api.getCameras();
       setCameras(cams);
       const hw = await api.getHardware();
       setHardware(hw);
+      const notif = await api.getNotifications();
+      if (notif) {
+        setNotificationsConfig({
+          telegram: {
+            enabled: notif.telegram?.enabled ?? false,
+            bot_token: notif.telegram?.bot_token ?? '',
+            chat_id: notif.telegram?.chat_id ?? ''
+          },
+          whatsapp: {
+            enabled: notif.whatsapp?.enabled ?? false,
+            provider: notif.whatsapp?.provider ?? 'twilio',
+            account_sid: notif.whatsapp?.account_sid ?? '',
+            auth_token: notif.whatsapp?.auth_token ?? '',
+            from_number: notif.whatsapp?.from_number ?? '',
+            to_number: notif.whatsapp?.to_number ?? '',
+            instance_id: notif.whatsapp?.instance_id ?? '',
+            token: notif.whatsapp?.token ?? ''
+          },
+          email: {
+            enabled: notif.email?.enabled ?? false,
+            smtp_host: notif.email?.smtp_host ?? '',
+            smtp_port: notif.email?.smtp_port ?? 587
+          }
+        });
+      }
     } catch (err: any) {
       console.error('Failed to load settings:', err);
     } finally {
@@ -52,6 +87,16 @@ export const Settings: React.FC = () => {
       val = parseInt(value, 10) || 30;
     }
     setFormData((prev) => ({ ...prev, [name]: val }));
+  };
+
+  const handleNotificationChange = (channel: 'telegram' | 'whatsapp' | 'email', field: string, value: any) => {
+    setNotificationsConfig((prev: any) => ({
+      ...prev,
+      [channel]: {
+        ...prev[channel],
+        [field]: value
+      }
+    }));
   };
 
   const handleOpenAddModal = () => {
@@ -88,14 +133,12 @@ export const Settings: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    // Quick validation
     if (!formData.id.trim()) return setError('Camera ID is required');
     if (!formData.name.trim()) return setError('Camera name is required');
     if (!formData.source.trim()) return setError('Camera source/link is required');
 
     setSubmitting(true);
     try {
-      // Find original zones configuration so we preserve it during edit
       const existingZones = isEditMode
         ? (cameras.find((c) => c.id === formData.id)?.config_json?.zones || [])
         : [];
@@ -138,6 +181,22 @@ export const Settings: React.FC = () => {
     } catch (err: any) {
       alert(err.message || 'Failed to delete camera feed');
       setLoading(false);
+    }
+  };
+
+  const handleSaveNotifications = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSavingNotifications(true);
+    setNotificationMessage('');
+    setNotificationError('');
+    try {
+      await api.updateNotifications(notificationsConfig);
+      setNotificationMessage('Notification settings updated! Re-applying configuration on servers...');
+      setTimeout(fetchSettings, 3000);
+    } catch (err: any) {
+      setNotificationError(err.message || 'Failed to update notification configuration');
+    } finally {
+      setSavingNotifications(false);
     }
   };
 
@@ -224,7 +283,7 @@ export const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* 2. Hardware / Inference details */}
+      {/* 2. Hardware & AI Detector details */}
       <div style={{ display: 'flex', gap: '24px', flexWrap: 'wrap' }}>
         {/* Hardware Specs */}
         <div className="card" style={{ flexGrow: 1, flexBasis: '320px', padding: '24px' }}>
@@ -297,7 +356,168 @@ export const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Add/Edit Camera Modal Form */}
+      {/* 3. Global Notification Configurations Card */}
+      <div className="card" style={{ padding: '24px' }}>
+        <h2 style={{ fontSize: '1rem', fontWeight: 600, marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Bell size={18} style={{ color: 'var(--accent-orange)' }} />
+          <span>Alert Dispatch Channels Configuration</span>
+        </h2>
+
+        {notificationMessage && (
+          <div style={{
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            border: '1px solid rgba(16, 185, 129, 0.25)',
+            color: 'var(--accent-emerald)',
+            borderRadius: '8px',
+            padding: '12px',
+            fontSize: '0.825rem',
+            marginBottom: '16px'
+          }}>
+            {notificationMessage}
+          </div>
+        )}
+
+        {notificationError && (
+          <div style={{
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            border: '1px solid rgba(239, 68, 68, 0.25)',
+            color: 'var(--accent-red)',
+            borderRadius: '8px',
+            padding: '12px',
+            fontSize: '0.825rem',
+            marginBottom: '16px'
+          }}>
+            {notificationError}
+          </div>
+        )}
+
+        <form onSubmit={handleSaveNotifications} style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+          
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '24px', flexWrap: 'wrap' }}>
+            
+            {/* Telegram Channel block */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', backgroundColor: 'rgba(255,255,255,0.01)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>Telegram Alerts Bot</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={notificationsConfig.telegram.enabled}
+                    onChange={(e) => handleNotificationChange('telegram', 'enabled', e.target.checked)}
+                  />
+                  <span>Enable Channel</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', opacity: notificationsConfig.telegram.enabled ? 1 : 0.4 }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Telegram Bot API Token</label>
+                  <input 
+                    type="password" 
+                    className="input" 
+                    placeholder="e.g. 123456789:ABCdefGhI..."
+                    value={notificationsConfig.telegram.bot_token}
+                    onChange={(e) => handleNotificationChange('telegram', 'bot_token', e.target.value)}
+                    disabled={!notificationsConfig.telegram.enabled}
+                  />
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Target Group/Chat ID</label>
+                  <input 
+                    type="text" 
+                    className="input" 
+                    placeholder="e.g. -100123456789"
+                    value={notificationsConfig.telegram.chat_id}
+                    onChange={(e) => handleNotificationChange('telegram', 'chat_id', e.target.value)}
+                    disabled={!notificationsConfig.telegram.enabled}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* WhatsApp (Twilio) Channel block */}
+            <div style={{ border: '1px solid var(--border)', borderRadius: '8px', padding: '16px', backgroundColor: 'rgba(255,255,255,0.01)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+                <span style={{ fontWeight: 600, fontSize: '0.9rem' }}>WhatsApp (Twilio API)</span>
+                <label style={{ display: 'flex', alignItems: 'center', gap: '6px', fontSize: '0.8rem', cursor: 'pointer' }}>
+                  <input 
+                    type="checkbox" 
+                    checked={notificationsConfig.whatsapp.enabled}
+                    onChange={(e) => handleNotificationChange('whatsapp', 'enabled', e.target.checked)}
+                  />
+                  <span>Enable Channel</span>
+                </label>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', opacity: notificationsConfig.whatsapp.enabled ? 1 : 0.4 }}>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>Twilio Account SID</label>
+                    <input 
+                      type="text" 
+                      className="input" 
+                      placeholder="AC..."
+                      value={notificationsConfig.whatsapp.account_sid}
+                      onChange={(e) => handleNotificationChange('whatsapp', 'account_sid', e.target.value)}
+                      disabled={!notificationsConfig.whatsapp.enabled}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>Twilio Auth Token</label>
+                    <input 
+                      type="password" 
+                      className="input" 
+                      placeholder="secret..."
+                      value={notificationsConfig.whatsapp.auth_token}
+                      onChange={(e) => handleNotificationChange('whatsapp', 'auth_token', e.target.value)}
+                      disabled={!notificationsConfig.whatsapp.enabled}
+                    />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>From (whatsapp:+...)</label>
+                    <input 
+                      type="text" 
+                      className="input" 
+                      placeholder="whatsapp:+14155238886"
+                      value={notificationsConfig.whatsapp.from_number}
+                      onChange={(e) => handleNotificationChange('whatsapp', 'from_number', e.target.value)}
+                      disabled={!notificationsConfig.whatsapp.enabled}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    <label style={{ fontSize: '0.725rem', color: 'var(--text-secondary)' }}>To (whatsapp:+...)</label>
+                    <input 
+                      type="text" 
+                      className="input" 
+                      placeholder="whatsapp:+91..."
+                      value={notificationsConfig.whatsapp.to_number}
+                      onChange={(e) => handleNotificationChange('whatsapp', 'to_number', e.target.value)}
+                      disabled={!notificationsConfig.whatsapp.enabled}
+                    />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+          </div>
+
+          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+            <button 
+              type="submit" 
+              className="btn btn-primary" 
+              style={{ padding: '10px 24px' }}
+              disabled={savingNotifications}
+            >
+              {savingNotifications ? 'Saving Settings...' : 'Save Configurations'}
+            </button>
+          </div>
+        </form>
+      </div>
+
+      {/* 4. Add/Edit Camera Modal Form */}
       {showAddModal && (
         <div style={{
           position: 'fixed',
@@ -364,7 +584,7 @@ export const Settings: React.FC = () => {
                   placeholder="phone_cam_01" 
                   value={formData.id}
                   onChange={handleInputChange}
-                  disabled={isEditMode} // Cannot rename ID during edit
+                  disabled={isEditMode}
                   required
                 />
               </div>
