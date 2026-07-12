@@ -115,6 +115,93 @@ async def create_camera(
         
     return camera
 
+@router.put("/{camera_id}", response_model=CameraResponse, summary="Update camera configuration")
+async def update_camera(
+    payload: CameraCreate,
+    camera_id: str = Path(..., description="The ID of the camera to update"),
+    request: Request = None,
+    db: AsyncSession = Depends(get_db),
+    camera_manager: CameraManager = Depends(get_camera_manager)
+):
+    camera = await db.get(Camera, camera_id)
+    if not camera:
+        raise HTTPException(status_code=404, detail="Camera not found")
+        
+    # Stop current stream/worker first
+    await camera_manager.remove_camera(camera_id)
+    if request and hasattr(request.app.state, "camera_workers"):
+        worker = request.app.state.camera_workers.pop(camera_id, None)
+        if worker:
+            worker.stop()
+            
+    # Update columns
+    camera.name = payload.name
+    camera.source = payload.source
+    camera.type = payload.type
+    camera.enabled = payload.enabled
+    
+    # Update configuration
+    camera.config_json = {
+        "stream_type": payload.stream_type,
+        "fps_cap": payload.fps_cap,
+        "zones": [z.model_dump() for z in payload.zones]
+    }
+    
+    await db.commit()
+    await db.refresh(camera)
+    
+    # Restart stream/worker if enabled
+    if camera.enabled:
+        await camera_manager.add_camera(payload)
+        
+        # Instantiate and start the CameraWorker processing thread
+        from app.workers.camera_worker import CameraWorker
+        from app.config import get_settings, CameraConfigItem, CameraZoneConfig
+        
+        settings = get_settings()
+        event_bus = request.app.state.event_bus
+        inference_manager = request.app.state.inference_manager
+        tracking_manager = request.app.state.tracking_manager
+        alert_manager = request.app.state.alert_manager
+        
+        zones_cfg = []
+        for z in payload.zones:
+            zones_cfg.append(CameraZoneConfig(
+                name=z.name,
+                type=z.type,
+                points=z.points,
+                direction=z.direction,
+                restricted=z.restricted
+            ))
+            
+        cam_config = CameraConfigItem(
+            id=payload.id,
+            name=payload.name,
+            source=payload.source,
+            type=payload.type.value if hasattr(payload.type, "value") else str(payload.type),
+            enabled=payload.enabled,
+            stream_type=payload.stream_type,
+            fps_cap=payload.fps_cap,
+            zones=zones_cfg
+        )
+        
+        worker = CameraWorker(
+            config=cam_config,
+            settings=settings,
+            event_bus=event_bus,
+            camera_manager=camera_manager,
+            inference_manager=inference_manager,
+            tracking_manager=tracking_manager,
+            alert_manager=alert_manager
+        )
+        worker.start()
+        
+        if not hasattr(request.app.state, "camera_workers"):
+            request.app.state.camera_workers = {}
+        request.app.state.camera_workers[payload.id] = worker
+        
+    return camera
+
 @router.delete("/{camera_id}", status_code=status.HTTP_204_NO_CONTENT, summary="Delete camera")
 async def delete_camera(
     camera_id: str = Path(..., description="The ID of the camera to delete"),

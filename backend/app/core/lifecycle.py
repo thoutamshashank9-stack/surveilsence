@@ -116,26 +116,54 @@ async def lifespan(app: FastAPI):
             else:
                 existing.status = CameraStatus.ONLINE if cam_config.enabled else CameraStatus.OFFLINE
             
-            if cam_config.enabled:
-                try:
-                    await camera_manager.add_camera(cam_config)
-                    logger.info("Camera loaded at startup", camera_id=cam_config.id, name=cam_config.name)
-                    
-                    # Instantiate and start the CameraWorker thread
-                    worker = CameraWorker(
-                        config=cam_config,
-                        settings=settings,
-                        event_bus=event_bus,
-                        camera_manager=camera_manager,
-                        inference_manager=inference_manager,
-                        tracking_manager=tracking_manager,
-                        alert_manager=alert_manager
-                    )
-                    worker.start()
-                    app.state.camera_workers[cam_config.id] = worker
-                except Exception as ex:
-                    logger.error("Failed to load camera at startup", camera_id=cam_config.id, error=str(ex))
         await db.commit()
+
+        # Load and initialize ALL enabled cameras from database at startup
+        q_all = select(Camera).where(Camera.enabled == True)
+        res_all = await db.execute(q_all)
+        db_cameras = res_all.scalars().all()
+
+        for camera in db_cameras:
+            try:
+                await camera_manager.add_camera(camera)
+                logger.info("Camera loaded at startup", camera_id=camera.id, name=camera.name)
+
+                # Instantiate and start the CameraWorker thread
+                from app.config import CameraConfigItem, CameraZoneConfig
+                zones_cfg = []
+                for z in camera.config_json.get("zones", []):
+                    zones_cfg.append(CameraZoneConfig(
+                        name=z.get("name"),
+                        type=z.get("type"),
+                        points=z.get("points"),
+                        direction=z.get("direction"),
+                        restricted=z.get("restricted", False)
+                    ))
+
+                cam_config = CameraConfigItem(
+                    id=camera.id,
+                    name=camera.name,
+                    source=camera.source,
+                    type=camera.type.value if hasattr(camera.type, "value") else str(camera.type),
+                    enabled=camera.enabled,
+                    stream_type=camera.config_json.get("stream_type", "sub"),
+                    fps_cap=camera.config_json.get("fps_cap", 30),
+                    zones=zones_cfg
+                )
+
+                worker = CameraWorker(
+                    config=cam_config,
+                    settings=settings,
+                    event_bus=event_bus,
+                    camera_manager=camera_manager,
+                    inference_manager=inference_manager,
+                    tracking_manager=tracking_manager,
+                    alert_manager=alert_manager
+                )
+                worker.start()
+                app.state.camera_workers[camera.id] = worker
+            except Exception as ex:
+                logger.error("Failed to load camera at startup", camera_id=camera.id, error=str(ex))
                 
     # Log system hardware info
     logger.info("System hardware capabilities:", 

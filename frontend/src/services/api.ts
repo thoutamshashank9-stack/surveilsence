@@ -90,6 +90,15 @@ export const api = {
     return handleResponse<Camera>(res);
   },
 
+  async updateCamera(id: string, camera: any): Promise<Camera> {
+    const res = await fetch(`${API_BASE}/cameras/${id}`, {
+      method: 'PUT',
+      headers: getHeaders(),
+      body: JSON.stringify(camera)
+    });
+    return handleResponse<Camera>(res);
+  },
+
   async deleteCamera(id: string): Promise<void> {
     const res = await fetch(`${API_BASE}/cameras/${id}`, {
       method: 'DELETE',

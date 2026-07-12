@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/layout/Sidebar';
 import Header from './components/layout/Header';
@@ -7,12 +7,29 @@ import LiveView from './pages/LiveView';
 import Alerts from './pages/Alerts';
 import Analytics from './pages/Analytics';
 import Settings from './pages/Settings';
+import Login from './pages/Login';
+import api from './services/api';
 
 export const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(api.isAuthenticated());
+
+  const handleLoginSuccess = () => {
+    setIsAuthenticated(true);
+  };
+
+  const handleLogout = () => {
+    api.logout();
+    setIsAuthenticated(false);
+  };
+
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={handleLoginSuccess} />;
+  }
+
   return (
     <div className="app-layout">
       {/* Sidebar navigation */}
-      <Sidebar />
+      <Sidebar onLogout={handleLogout} />
 
       {/* Main panel */}
       <main className="main-content">

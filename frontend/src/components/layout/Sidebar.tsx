@@ -1,9 +1,13 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
-import { ShieldAlert, Video, LayoutDashboard, LineChart, Settings, Radio } from 'lucide-react';
+import { ShieldAlert, Video, LayoutDashboard, LineChart, Settings, Radio, LogOut } from 'lucide-react';
 import useAlertStore from '../../store/alertStore';
 
-export const Sidebar: React.FC = () => {
+interface SidebarProps {
+  onLogout: () => void;
+}
+
+export const Sidebar: React.FC<SidebarProps> = ({ onLogout }) => {
   const unreadCount = useAlertStore((state) => state.unreadCount);
 
   return (
@@ -83,6 +87,21 @@ export const Sidebar: React.FC = () => {
           <Settings size={18} />
           <span>Settings</span>
         </NavLink>
+
+        {/* Logout Button */}
+        <button 
+          onClick={onLogout}
+          className="btn btn-ghost"
+          style={{ 
+            justifyContent: 'flex-start', 
+            margin: '8px 16px 0 16px', 
+            color: 'var(--text-secondary)',
+            borderColor: 'transparent'
+          }}
+        >
+          <LogOut size={18} style={{ color: 'var(--accent-red)' }} />
+          <span>Sign Out</span>
+        </button>
       </nav>
 
       {/* Footer Uptime status */}

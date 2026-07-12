@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Cpu, Video, ShieldCheck, Plus, Trash2, X, AlertTriangle } from 'lucide-react';
+import { Cpu, Video, ShieldCheck, Plus, Trash2, X, AlertTriangle, Edit2 } from 'lucide-react';
 import api from '../services/api';
 import { Camera, HardwareInfo, CameraType } from '../types';
 import LoadingSpinner from '../components/common/LoadingSpinner';
@@ -11,10 +11,11 @@ export const Settings: React.FC = () => {
 
   // Form Modal States
   const [showAddModal, setShowAddModal] = useState<boolean>(false);
+  const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
 
-  // New Camera Form Data
+  // New/Edit Camera Form Data
   const [formData, setFormData] = useState({
     id: '',
     name: '',
@@ -54,6 +55,7 @@ export const Settings: React.FC = () => {
   };
 
   const handleOpenAddModal = () => {
+    setIsEditMode(false);
     setFormData({
       id: '',
       name: '',
@@ -67,7 +69,22 @@ export const Settings: React.FC = () => {
     setShowAddModal(true);
   };
 
-  const handleAddCamera = async (e: React.FormEvent) => {
+  const handleOpenEditModal = (camera: Camera) => {
+    setIsEditMode(true);
+    setFormData({
+      id: camera.id,
+      name: camera.name,
+      source: camera.source,
+      type: camera.type,
+      enabled: camera.enabled,
+      stream_type: camera.config_json?.stream_type || 'sub',
+      fps_cap: camera.config_json?.fps_cap || 30,
+    });
+    setError('');
+    setShowAddModal(true);
+  };
+
+  const handleSaveCamera = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
@@ -78,7 +95,11 @@ export const Settings: React.FC = () => {
 
     setSubmitting(true);
     try {
-      // Build camera model matching create schema
+      // Find original zones configuration so we preserve it during edit
+      const existingZones = isEditMode
+        ? (cameras.find((c) => c.id === formData.id)?.config_json?.zones || [])
+        : [];
+
       const payload = {
         id: formData.id.trim(),
         name: formData.name.trim(),
@@ -87,16 +108,19 @@ export const Settings: React.FC = () => {
         enabled: formData.enabled,
         stream_type: formData.stream_type,
         fps_cap: formData.fps_cap,
-        zones: [] // Starts with empty zones list
+        zones: existingZones
       };
 
-      await api.createCamera(payload);
-      setShowAddModal(false);
+      if (isEditMode) {
+        await api.updateCamera(formData.id, payload);
+      } else {
+        await api.createCamera(payload);
+      }
       
-      // Reload camera list
+      setShowAddModal(false);
       await fetchSettings();
     } catch (err: any) {
-      setError(err.message || 'Failed to add camera feed');
+      setError(err.message || `Failed to ${isEditMode ? 'update' : 'add'} camera feed`);
     } finally {
       setSubmitting(false);
     }
@@ -167,14 +191,24 @@ export const Settings: React.FC = () => {
                   </td>
                   <td style={{ padding: '12px' }}>{c.config_json?.zones?.length || 0} Zones</td>
                   <td style={{ padding: '12px', textAlign: 'right' }}>
-                    <button 
-                      className="btn btn-ghost" 
-                      style={{ padding: '6px 10px', color: 'var(--accent-red)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
-                      onClick={() => handleDeleteCamera(c.id)}
-                      title="Delete camera feed"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '8px' }}>
+                      <button 
+                        className="btn btn-ghost" 
+                        style={{ padding: '6px 10px', borderColor: 'rgba(255, 255, 255, 0.1)' }}
+                        onClick={() => handleOpenEditModal(c)}
+                        title="Edit camera settings"
+                      >
+                        <Edit2 size={14} style={{ color: 'var(--accent-blue)' }} />
+                      </button>
+                      <button 
+                        className="btn btn-ghost" 
+                        style={{ padding: '6px 10px', color: 'var(--accent-red)', borderColor: 'rgba(239, 68, 68, 0.2)' }}
+                        onClick={() => handleDeleteCamera(c.id)}
+                        title="Delete camera feed"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -263,7 +297,7 @@ export const Settings: React.FC = () => {
         </div>
       </div>
 
-      {/* 3. Add Camera Modal Form */}
+      {/* 3. Add/Edit Camera Modal Form */}
       {showAddModal && (
         <div style={{
           position: 'fixed',
@@ -292,7 +326,7 @@ export const Settings: React.FC = () => {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h3 style={{ fontSize: '1.1rem', fontWeight: 600, margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <Plus size={18} style={{ color: 'var(--accent-blue)' }} />
-                <span>Add Camera Stream</span>
+                <span>{isEditMode ? 'Edit Camera Settings' : 'Add Camera Stream'}</span>
               </h3>
               <button 
                 className="btn btn-ghost" 
@@ -320,7 +354,7 @@ export const Settings: React.FC = () => {
               </div>
             )}
 
-            <form onSubmit={handleAddCamera} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <form onSubmit={handleSaveCamera} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Camera ID (unique, e.g. phone_cam_01)</label>
                 <input 
@@ -330,6 +364,7 @@ export const Settings: React.FC = () => {
                   placeholder="phone_cam_01" 
                   value={formData.id}
                   onChange={handleInputChange}
+                  disabled={isEditMode} // Cannot rename ID during edit
                   required
                 />
               </div>
@@ -400,7 +435,7 @@ export const Settings: React.FC = () => {
                   className="btn btn-primary" 
                   disabled={submitting}
                 >
-                  {submitting ? 'Adding...' : 'Register Camera'}
+                  {submitting ? 'Saving...' : (isEditMode ? 'Update Settings' : 'Register Camera')}
                 </button>
               </div>
             </form>

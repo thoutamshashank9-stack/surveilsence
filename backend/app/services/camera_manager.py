@@ -193,12 +193,25 @@ class CameraManager:
                 pass
 
     async def add_camera(self, config: Any) -> None:
-        camera_id = config.id if hasattr(config, "id") else config.get("id")
-        name = config.name if hasattr(config, "name") else config.get("name")
-        source = config.source if hasattr(config, "source") else config.get("source")
+        is_dict = isinstance(config, dict)
+        
+        camera_id = config.get("id") if is_dict else getattr(config, "id", None)
+        name = config.get("name") if is_dict else getattr(config, "name", None)
+        source = config.get("source") if is_dict else getattr(config, "source", None)
         self._validate_camera_source(source)
-        type_ = config.type if hasattr(config, "type") else config.get("type")
-        fps_cap = config.fps_cap if hasattr(config, "fps_cap") else config.get("fps_cap", 30)
+        
+        # Extract type safely
+        raw_type = config.get("type") if is_dict else getattr(config, "type", None)
+        type_ = raw_type.value if hasattr(raw_type, "value") else str(raw_type)
+        
+        # Extract fps_cap safely (fall back to config_json if it is a DB model)
+        if is_dict:
+            fps_cap = config.get("fps_cap", 30)
+        else:
+            fps_cap = getattr(config, "fps_cap", None)
+            if fps_cap is None:
+                config_json = getattr(config, "config_json", {}) or {}
+                fps_cap = config_json.get("fps_cap", 30)
         
         if camera_id in self.cameras:
             await self.remove_camera(camera_id)
