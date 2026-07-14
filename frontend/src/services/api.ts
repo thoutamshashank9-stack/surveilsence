@@ -182,6 +182,23 @@ export const api = {
     const params = new URLSearchParams({ camera_id: cameraId, hours_ago: String(hoursAgo) });
     const res = await fetch(`${API_BASE}/analytics/heatmap?${params.toString()}`, { headers: getHeaders() });
     return handleResponse<HeatmapData>(res);
+  },
+
+  async getStaffShifts(cameraId?: string, dateStr?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (cameraId) params.append('camera_id', cameraId);
+    if (dateStr) params.append('date', dateStr);
+    const res = await fetch(`${API_BASE}/analytics/employee/shifts?${params.toString()}`, { headers: getHeaders() });
+    return handleResponse<any[]>(res);
+  },
+
+  async getStaffInteractions(cameraId?: string, dateStr?: string): Promise<any[]> {
+    const params = new URLSearchParams();
+    if (cameraId) params.append('camera_id', cameraId);
+    if (dateStr) params.append('date', dateStr);
+    const res = await fetch(`${API_BASE}/analytics/employee/interactions?${params.toString()}`, { headers: getHeaders() });
+    return handleResponse<any[]>(res);
   }
 };
 export default api;
+

@@ -13,6 +13,13 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 # Custom nginx config to handle client-side routing and API/WS proxying
 RUN echo 'server { \
     listen 80; \
+    location /api/v1/ws { \
+        proxy_pass http://backend:8000/api/v1/ws; \
+        proxy_http_version 1.1; \
+        proxy_set_header Upgrade $http_upgrade; \
+        proxy_set_header Connection "upgrade"; \
+        proxy_set_header Host $host; \
+    } \
     location / { \
         root /usr/share/nginx/html; \
         try_files $uri $uri/ /index.html; \

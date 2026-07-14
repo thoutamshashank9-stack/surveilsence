@@ -1,4 +1,5 @@
 import os
+import time
 import numpy as np
 import supervision as sv
 from app.ai.detection.base import DetectorBase, ModelCapabilities
@@ -101,10 +102,16 @@ class YOLODetector(DetectorBase):
                 confidence=confidence,
                 class_id=class_id
             )
-            return detections.with_nms(threshold=0.5)
+            detections = detections.with_nms(threshold=0.5)
+            xyxy = detections.xyxy
+            confidence = detections.confidence
+            class_id = detections.class_id
+
+        if len(xyxy) == 0:
+            return sv.Detections.empty()
 
         # Scale coordinates back to original image size
-        pad_x, pad_y = scale_info["pad"][0], scale_info["pad"][1]
+        pad_x, pad_y = 0, 0
         scale = scale_info["scale"]
 
         xyxy[:, [0, 2]] = (xyxy[:, [0, 2]] - pad_x) / scale

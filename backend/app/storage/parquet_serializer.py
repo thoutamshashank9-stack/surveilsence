@@ -1,6 +1,8 @@
 import os
-import time
 import asyncio
+import tempfile
+import shutil
+from typing import Optional
 from datetime import datetime, timedelta
 import pandas as pd
 from sqlalchemy import select, delete
@@ -88,22 +90,41 @@ class ParquetSerializer:
                     df_events["month"] = df_events["dt"].dt.strftime("%m")
                     df_events["day"] = df_events["dt"].dt.strftime("%d")
 
-                    # Write out as partitioned parquet
                     events_dir = os.path.join(self.output_dir, "events")
                     os.makedirs(events_dir, exist_ok=True)
-                    
-                    df_events.to_parquet(
-                        events_dir,
-                        partition_cols=["year", "month", "day", "camera_id"],
-                        index=False,
-                        engine="pyarrow",
-                        compression="snappy"
-                    )
-                    logger.info("Successfully serialized events to Parquet", count=len(events))
 
-                    # Delete from SQLite
-                    event_ids = [e.id for e in events]
-                    await db.execute(delete(Event).where(Event.id.in_(event_ids)))
+                    # Secure/transactional write: write to a temp directory first
+                    with tempfile.TemporaryDirectory(dir=self.output_dir) as tmpdir:
+                        df_events.to_parquet(
+                            tmpdir,
+                            partition_cols=["year", "month", "day", "camera_id"],
+                            index=False,
+                            engine="pyarrow",
+                            compression="snappy"
+                        )
+                        
+                        # Verify the write by checking if any parquet files were created
+                        written_files = []
+                        for root, _, files in os.walk(tmpdir):
+                            for file in files:
+                                if file.endswith(".parquet"):
+                                    written_files.append(os.path.join(root, file))
+                        
+                        if not written_files:
+                            raise IOError("Failed to verify parquet file serialization: no parquet files written for events")
+
+                        # Delete from SQLite (within the transaction)
+                        event_ids = [e.id for e in events]
+                        await db.execute(delete(Event).where(Event.id.in_(event_ids)))
+
+                        # Move files from temp directory to the final destination
+                        for fpath in written_files:
+                            rel_path = os.path.relpath(fpath, tmpdir)
+                            dest_path = os.path.join(events_dir, rel_path)
+                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                            shutil.move(fpath, dest_path)
+                        
+                    logger.info("Successfully serialized events to Parquet", count=len(events))
 
                 # 2. Archive TrackCoordinates
                 coord_query = select(TrackCoordinate).where(TrackCoordinate.timestamp < cutoff_time)
@@ -129,19 +150,39 @@ class ParquetSerializer:
 
                     coords_dir = os.path.join(self.output_dir, "coordinates")
                     os.makedirs(coords_dir, exist_ok=True)
-                    
-                    df_coords.to_parquet(
-                        coords_dir,
-                        partition_cols=["year", "month", "day", "camera_id"],
-                        index=False,
-                        engine="pyarrow",
-                        compression="snappy"
-                    )
-                    logger.info("Successfully serialized coordinates to Parquet", count=len(coords))
 
-                    # Delete from SQLite
-                    coord_ids = [c.id for c in coords]
-                    await db.execute(delete(TrackCoordinate).where(TrackCoordinate.id.in_(coord_ids)))
+                    # Secure/transactional write: write to a temp directory first
+                    with tempfile.TemporaryDirectory(dir=self.output_dir) as tmpdir:
+                        df_coords.to_parquet(
+                            tmpdir,
+                            partition_cols=["year", "month", "day", "camera_id"],
+                            index=False,
+                            engine="pyarrow",
+                            compression="snappy"
+                        )
+                        
+                        # Verify the write by checking if any parquet files were created
+                        written_files = []
+                        for root, _, files in os.walk(tmpdir):
+                            for file in files:
+                                if file.endswith(".parquet"):
+                                    written_files.append(os.path.join(root, file))
+                        
+                        if not written_files:
+                            raise IOError("Failed to verify parquet file serialization: no parquet files written for coordinates")
+
+                        # Delete from SQLite (within the transaction)
+                        coord_ids = [c.id for c in coords]
+                        await db.execute(delete(TrackCoordinate).where(TrackCoordinate.id.in_(coord_ids)))
+
+                        # Move files from temp directory to the final destination
+                        for fpath in written_files:
+                            rel_path = os.path.relpath(fpath, tmpdir)
+                            dest_path = os.path.join(coords_dir, rel_path)
+                            os.makedirs(os.path.dirname(dest_path), exist_ok=True)
+                            shutil.move(fpath, dest_path)
+                        
+                    logger.info("Successfully serialized coordinates to Parquet", count=len(coords))
 
                 await db.commit()
                 logger.info("Completed database Parquet archiving sequence and SQLite vacuum")

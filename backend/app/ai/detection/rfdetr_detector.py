@@ -79,7 +79,7 @@ class RFDetrNanoDetector(DetectorBase):
         xyxy = np.stack([x1, y1, x2, y2], axis=1) * self.input_size
 
         # Scale coordinates back to original image size
-        pad_x, pad_y = scale_info["pad"][0], scale_info["pad"][1]
+        pad_x, pad_y = 0, 0
         scale = scale_info["scale"]
 
         xyxy[:, [0, 2]] = (xyxy[:, [0, 2]] - pad_x) / scale

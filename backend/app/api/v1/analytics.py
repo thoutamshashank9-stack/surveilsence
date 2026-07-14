@@ -129,3 +129,75 @@ async def pos_scan_webhook(
     )
     return {"status": "event_registered"}
 
+import time
+from fastapi import Request
+from sqlalchemy import select, and_
+from datetime import timedelta
+from app.models.employee_analytics import StaffShift, StaffInteraction
+
+class POSBillRequest(BaseModel):
+    camera_id: str = Field(..., description="Camera ID")
+    employee_id: str = Field(..., description="Employee Identifier")
+    ticket_id: str = Field(..., description="POS Bill Ticket Identifier")
+    total_amount: float = Field(..., description="Transaction Amount")
+    timestamp: Optional[float] = Field(None, description="Event Epoch Timestamp")
+
+@router.post("/employee/pos-transaction", summary="Receive POS checkout transaction scan")
+async def pos_transaction_webhook(
+    payload: POSBillRequest,
+    request: Request
+):
+    ts = payload.timestamp or time.time()
+    worker = request.app.state.employee_analytics_worker
+    await worker.register_pos_transaction(
+        camera_id=payload.camera_id,
+        employee_id=payload.employee_id,
+        ticket_id=payload.ticket_id,
+        amount=payload.total_amount,
+        timestamp=ts
+    )
+    return {"status": "transaction_registered"}
+
+@router.get("/employee/shifts", summary="Get employee shift records")
+async def get_shifts(
+    camera_id: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    q = select(StaffShift)
+    if camera_id:
+        q = q.where(StaffShift.camera_id == camera_id)
+    if date:
+        try:
+            start_date = datetime.strptime(date, "%Y-%m-%d")
+            end_date = start_date + timedelta(days=1)
+            q = q.where(and_(StaffShift.first_seen >= start_date, StaffShift.first_seen < end_date))
+        except ValueError:
+            pass
+            
+    q = q.order_by(StaffShift.first_seen.desc())
+    res = await db.execute(q)
+    return res.scalars().all()
+
+@router.get("/employee/interactions", summary="Get employee interaction logs")
+async def get_interactions(
+    camera_id: Optional[str] = Query(None),
+    date: Optional[str] = Query(None),
+    db: AsyncSession = Depends(get_db)
+):
+    q = select(StaffInteraction)
+    if camera_id:
+        q = q.where(StaffInteraction.camera_id == camera_id)
+    if date:
+        try:
+            start_date = datetime.strptime(date, "%Y-%m-%d")
+            end_date = start_date + timedelta(days=1)
+            q = q.where(and_(StaffInteraction.start_time >= start_date, StaffInteraction.start_time < end_date))
+        except ValueError:
+            pass
+            
+    q = q.order_by(StaffInteraction.start_time.desc())
+    res = await db.execute(q)
+    return res.scalars().all()
+
+

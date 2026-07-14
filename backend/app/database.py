@@ -19,7 +19,7 @@ if settings.database.url.startswith("sqlite"):
 engine = create_async_engine(
     settings.database.url,
     echo=settings.database.echo,
-    connect_args={"check_same_thread": False} if "sqlite" in settings.database.url else {}
+    connect_args={"check_same_thread": False, "timeout": 30.0} if "sqlite" in settings.database.url else {}
 )
 
 # Enable WAL mode for SQLite
@@ -59,6 +59,8 @@ async def init_db() -> None:
     from app.models.zone import Zone
     from app.models.tracking import TrackSummary, TrackCoordinate
     from app.models.analytics import HourlyAggregate
+    from app.models.employee_analytics import StaffShift, StaffInteraction
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+

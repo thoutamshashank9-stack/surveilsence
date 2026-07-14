@@ -163,6 +163,8 @@ class CameraWorker:
                 
                 class_name = CLASS_MAPPINGS.get(class_id, "person")
                 role = self.track_roles.get(track_id, "customer")
+                zones_set = self.track_zones.get(track_id)
+                zone_name = list(zones_set)[0] if (zones_set and len(zones_set) > 0) else None
                 
                 # Anchor coordinates
                 detections_list.append({
@@ -171,6 +173,7 @@ class CameraWorker:
                     "class_name": class_name,
                     "role": role,
                     "confidence": conf,
+                    "zone_name": zone_name,
                     "box": {
                         "x1": float(box[0]),
                         "y1": float(box[1]),

@@ -85,12 +85,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({ cameraId }) => {
         const answer = await response.json();
         await pc.setRemoteDescription(new RTCSessionDescription(answer));
 
-        // If using simulated answer fallback, let's complete fake connection loading
+        // If using simulated answer fallback or connection is not established, fall back to MJPEG
         setTimeout(() => {
           if (pc.connectionState !== 'connected' && mode === 'webrtc') {
-            console.log('Simulated WebRTC link established');
-            setWebrtcConnected(true);
-            setLoading(false);
+            console.warn('WebRTC connection not established (possibly simulated answer). Falling back to MJPEG...');
+            setMode('mjpeg');
           }
         }, 1500);
 

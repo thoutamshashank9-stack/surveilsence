@@ -75,6 +75,12 @@ async def lifespan(app: FastAPI):
     storage_worker = StorageWorker(settings, event_bus)
     await storage_worker.start()
     app.state.storage_worker = storage_worker
+
+    # Employee Analytics Worker
+    from app.workers.employee_analytics_worker import EmployeeAnalyticsWorker
+    employee_analytics_worker = EmployeeAnalyticsWorker(settings, event_bus)
+    await employee_analytics_worker.start()
+    app.state.employee_analytics_worker = employee_analytics_worker
     
     # Parquet Serializer (OLAP archiver)
     from app.storage.parquet_serializer import ParquetSerializer
@@ -84,6 +90,7 @@ async def lifespan(app: FastAPI):
     app.state.parquet_serializer = parquet_serializer
     
     app.state.camera_workers = {}
+
 
     
     # 5. Load and initialize cameras from config
@@ -187,9 +194,12 @@ async def lifespan(app: FastAPI):
     # Stop workers
     if hasattr(app.state, "parquet_serializer"):
         await app.state.parquet_serializer.stop()
+    if hasattr(app.state, "employee_analytics_worker"):
+        await app.state.employee_analytics_worker.stop()
     await storage_worker.stop()
     
     # Stop Event Bus
     await event_bus.stop()
+
     
     logger.info("Shutdown complete")

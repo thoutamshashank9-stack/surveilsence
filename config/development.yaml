@@ -134,3 +134,19 @@ vlm:
   model: "moondream2"
   endpoint: "http://localhost:11434"   # Ollama
   timeout_seconds: 10
+
+# Behavioral Rules
+behavioral:
+  sweethearting:
+    enabled: true
+    conveyor_zone: "conveyor_belt"
+    bagging_zone: "bagging_area"
+    time_threshold: 3.0
+  velocity_loitering:
+    enabled: true
+    dwell_threshold_seconds: 30.0
+    velocity_threshold_mps: 0.2
+  concealment:
+    enabled: true
+    proximity_threshold: 0.3
+

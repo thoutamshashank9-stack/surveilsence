@@ -22,6 +22,7 @@ class CameraStream:
         self.cap: Optional[cv2.VideoCapture] = None
         self.frame: Optional[np.ndarray] = None
         self.last_frame_time: float = 0.0
+        self._lock = threading.Lock()
         
         self.status = CameraStatus.OFFLINE
         self.running = False
@@ -92,14 +93,17 @@ class CameraStream:
             
             if self.cam_type == "mock":
                 # Generate mock frame
-                self.frame = self._generate_mock_frame()
-                self.last_frame_time = time.time()
+                mock_frame = self._generate_mock_frame()
+                with self._lock:
+                    self.frame = mock_frame
+                    self.last_frame_time = time.time()
             else:
                 if self.cap:
                     ret, img = self.cap.read()
                     if ret:
-                        self.frame = img
-                        self.last_frame_time = time.time()
+                        with self._lock:
+                            self.frame = img
+                            self.last_frame_time = time.time()
                     else:
                         logger.warn("Failed to read frame from camera, attempting reconnect", camera_id=self.camera_id)
                         self.status = CameraStatus.CONNECTING
@@ -113,9 +117,10 @@ class CameraStream:
                 time.sleep(sleep_time)
 
     def read(self) -> Tuple[bool, Optional[np.ndarray]]:
-        if self.status != CameraStatus.ONLINE or self.frame is None:
-            return False, None
-        return True, self.frame.copy()
+        with self._lock:
+            if self.status != CameraStatus.ONLINE or self.frame is None:
+                return False, None
+            return True, self.frame.copy()
 
     def _generate_mock_frame(self) -> np.ndarray:
         # Generate 640x480 dark grey canvas
