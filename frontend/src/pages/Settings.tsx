@@ -16,6 +16,26 @@ export const Settings: React.FC = () => {
   const [error, setError] = useState<string>('');
   const [formZones, setFormZones] = useState<any[]>([]);
 
+  // Visual Zone Painter States
+  const [visualEditing, setVisualEditing] = useState<boolean>(false);
+  const [streamActive, setStreamActive] = useState<boolean>(true);
+  const [frozenImage, setFrozenImage] = useState<string | null>(null);
+  const [activeRectPoints, setActiveRectPoints] = useState<number[][]>([
+    [100, 100], [500, 100], [500, 500], [100, 500]
+  ]);
+  const [draggingPointIndex, setDraggingPointIndex] = useState<number | null>(null);
+  
+  // Zone metadata form
+  const [zoneType, setZoneType] = useState<string>('worker_cabin');
+  const [customZoneName, setCustomZoneName] = useState<string>('');
+  const [empName, setEmpName] = useState<string>('');
+  const [empId, setEmpId] = useState<string>('');
+  const [showBoxOverlay, setShowBoxOverlay] = useState<boolean>(false);
+
+  const imgRef = React.useRef<HTMLImageElement | null>(null);
+  const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+  const containerRef = React.useRef<HTMLDivElement | null>(null);
+
   // New/Edit Camera Form Data
   const [formData, setFormData] = useState({
     id: '',
@@ -26,6 +46,7 @@ export const Settings: React.FC = () => {
     stream_type: 'sub',
     fps_cap: 30,
   });
+
 
 
   // Global Notification States
@@ -148,6 +169,92 @@ export const Settings: React.FC = () => {
     setFormZones(formZones.filter((_, idx) => idx !== index));
   };
 
+  const handleFreezeFrame = () => {
+    if (imgRef.current && canvasRef.current) {
+      const img = imgRef.current;
+      const canvas = canvasRef.current;
+      canvas.width = img.naturalWidth || 640;
+      canvas.height = img.naturalHeight || 480;
+      const ctx = canvas.getContext('2d');
+      if (ctx) {
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        setFrozenImage(canvas.toDataURL('image/jpeg'));
+        setStreamActive(false);
+      }
+    }
+  };
+
+  const handlePointerDown = (index: number, e: React.PointerEvent) => {
+    e.preventDefault();
+    setDraggingPointIndex(index);
+    (e.target as Element).setPointerCapture(e.pointerId);
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (draggingPointIndex === null || !containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    let x = e.clientX - rect.left;
+    let y = e.clientY - rect.top;
+    x = Math.max(0, Math.min(x, rect.width));
+    y = Math.max(0, Math.min(y, rect.height));
+
+    const imgWidth = canvasRef.current?.width || 640;
+    const imgHeight = canvasRef.current?.height || 480;
+    const scaleX = imgWidth / rect.width;
+    const scaleY = imgHeight / rect.height;
+
+    const nativeX = Math.round(x * scaleX);
+    const nativeY = Math.round(y * scaleY);
+
+    const updated = [...activeRectPoints];
+    updated[draggingPointIndex] = [nativeX, nativeY];
+
+    // Align rectangle corners constraint
+    if (draggingPointIndex === 0) {
+      updated[1][1] = nativeY;
+      updated[3][0] = nativeX;
+    } else if (draggingPointIndex === 1) {
+      updated[0][1] = nativeY;
+      updated[2][0] = nativeX;
+    } else if (draggingPointIndex === 2) {
+      updated[3][1] = nativeY;
+      updated[1][0] = nativeX;
+    } else if (draggingPointIndex === 3) {
+      updated[2][1] = nativeY;
+      updated[0][0] = nativeX;
+    }
+    setActiveRectPoints(updated);
+  };
+
+  const handlePointerUp = () => {
+    if (draggingPointIndex !== null) {
+      setDraggingPointIndex(null);
+    }
+  };
+
+  const handleAddVisualZone = () => {
+    const finalZoneName = zoneType === 'custom' ? customZoneName.trim() : zoneType;
+    if (!finalZoneName) return alert('Please enter a zone name');
+
+    const newZone = {
+      name: finalZoneName,
+      type: 'polygon',
+      points: [...activeRectPoints],
+      restricted: false,
+      employee_name: zoneType === 'worker_cabin' ? empName.trim() : undefined,
+      employee_id: zoneType === 'worker_cabin' ? empId.trim() : undefined
+    };
+
+    setFormZones([...formZones, newZone]);
+    setVisualEditing(false);
+    setStreamActive(true);
+    setFrozenImage(null);
+    setShowBoxOverlay(false);
+    setEmpName('');
+    setEmpId('');
+    setCustomZoneName('');
+  };
+
   const handleOpenAddModal = () => {
     setIsEditMode(false);
     setFormData({
@@ -160,6 +267,10 @@ export const Settings: React.FC = () => {
       fps_cap: 30,
     });
     setFormZones([]);
+    setVisualEditing(false);
+    setStreamActive(true);
+    setFrozenImage(null);
+    setShowBoxOverlay(false);
     setError('');
     setShowAddModal(true);
   };
@@ -176,9 +287,14 @@ export const Settings: React.FC = () => {
       fps_cap: camera.config_json?.fps_cap || 30,
     });
     setFormZones(camera.config_json?.zones || []);
+    setVisualEditing(false);
+    setStreamActive(true);
+    setFrozenImage(null);
+    setShowBoxOverlay(false);
     setError('');
     setShowAddModal(true);
   };
+
 
   const handleSaveCamera = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -693,105 +809,347 @@ export const Settings: React.FC = () => {
 
               {/* Zones Configurator */}
               <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '10px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-                  <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Analytical Zones (Rectangular Boxes)</h4>
-                  <button 
-                    type="button" 
-                    className="btn btn-ghost" 
-                    style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset' }}
-                    onClick={handleAddZone}
-                  >
-                    <Plus size={12} style={{ marginRight: '4px' }} />
-                    Add Zone
-                  </button>
-                </div>
-                
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-                  {formZones.map((zone, index) => {
-                    const bbox = getBbox(zone.points);
-                    return (
-                      <div key={index} style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                          <input 
-                            type="text" 
-                            className="input" 
-                            style={{ padding: '4px 8px', fontSize: '0.8rem', width: '180px' }}
-                            value={zone.name}
-                            placeholder="zone_name"
-                            onChange={(e) => handleZoneChange(index, 'name', e.target.value)}
-                            required
+                {!visualEditing ? (
+                  <>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Analytical Zones (Rectangular Boxes)</h4>
+                      <div style={{ display: 'flex', gap: '8px' }}>
+                        <button 
+                          type="button" 
+                          className="btn btn-ghost" 
+                          style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset', color: 'var(--accent-blue)' }}
+                          onClick={() => {
+                            if (!formData.source) return alert('Please enter a camera source stream link first.');
+                            setVisualEditing(true);
+                            setStreamActive(true);
+                            setFrozenImage(null);
+                            setShowBoxOverlay(false);
+                          }}
+                        >
+                          Mark Visually
+                        </button>
+                        <button 
+                          type="button" 
+                          className="btn btn-ghost" 
+                          style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset' }}
+                          onClick={handleAddZone}
+                        >
+                          <Plus size={12} style={{ marginRight: '4px' }} />
+                          Add Zone
+                        </button>
+                      </div>
+                    </div>
+                    
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {formZones.map((zone, index) => {
+                        const bbox = getBbox(zone.points);
+                        return (
+                          <div key={index} style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <input 
+                                  type="text" 
+                                  className="input" 
+                                  style={{ padding: '4px 8px', fontSize: '0.8rem', width: '180px', fontWeight: 600 }}
+                                  value={zone.name}
+                                  placeholder="zone_name"
+                                  onChange={(e) => handleZoneChange(index, 'name', e.target.value)}
+                                  required
+                                />
+                                {zone.employee_name && (
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--accent-emerald)' }}>
+                                    Assigned: {zone.employee_name} ({zone.employee_id})
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={zone.restricted || false} 
+                                    onChange={(e) => handleZoneChange(index, 'restricted', e.target.checked)}
+                                  />
+                                  Restricted
+                                </label>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-ghost" 
+                                  style={{ padding: '4px', color: 'var(--accent-red)' }} 
+                                  onClick={() => handleDeleteZone(index)}
+                                >
+                                  <Trash2 size={14} />
+                                </button>
+                              </div>
+                            </div>
+                            
+                            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Min</span>
+                                <input 
+                                  type="number" 
+                                  className="input" 
+                                  style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                                  value={bbox.xMin}
+                                  onChange={(e) => handleZoneChange(index, 'xMin', e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Min</span>
+                                <input 
+                                  type="number" 
+                                  className="input" 
+                                  style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                                  value={bbox.yMin}
+                                  onChange={(e) => handleZoneChange(index, 'yMin', e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Max</span>
+                                <input 
+                                  type="number" 
+                                  className="input" 
+                                  style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                                  value={bbox.xMax}
+                                  onChange={(e) => handleZoneChange(index, 'xMax', e.target.value)}
+                                  required
+                                />
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                                <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Max</span>
+                                <input 
+                                  type="number" 
+                                  className="input" 
+                                  style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                                  value={bbox.yMax}
+                                  onChange={(e) => handleZoneChange(index, 'yMax', e.target.value)}
+                                  required
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0, color: 'var(--accent-blue)' }}>Visual Zone Editor Workspace</h4>
+                      <button 
+                        type="button" 
+                        className="btn btn-ghost" 
+                        style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset' }}
+                        onClick={() => setVisualEditing(false)}
+                      >
+                        Back to List
+                      </button>
+                    </div>
+
+                    {/* Canvas & Stream Container */}
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '12px' }}>
+                      <div 
+                        ref={containerRef} 
+                        style={{ 
+                          position: 'relative', 
+                          width: '100%', 
+                          maxHeight: '360px',
+                          aspectRatio: '16/9',
+                          background: '#000', 
+                          borderRadius: '8px', 
+                          overflow: 'hidden',
+                          border: '1px solid var(--border)'
+                        }}
+                      >
+                        {streamActive ? (
+                          <img 
+                            ref={imgRef}
+                            src={`/api/v1/cameras/${formData.id || 'phone cam'}/stream?t=${Date.now()}`}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                            crossOrigin="anonymous"
+                            alt="Live Stream Preview"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=640&q=80';
+                            }}
                           />
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer' }}>
-                              <input 
-                                type="checkbox" 
-                                checked={zone.restricted || false} 
-                                onChange={(e) => handleZoneChange(index, 'restricted', e.target.checked)}
-                              />
-                              Restricted
-                            </label>
+                        ) : (
+                          <img 
+                            src={frozenImage || ''}
+                            style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+                            alt="Frozen snapshot"
+                          />
+                        )}
+
+                        {/* Draggable Polygon Overlay */}
+                        {!streamActive && showBoxOverlay && (
+                          <svg 
+                            style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', overflow: 'visible' }}
+                            onPointerMove={handlePointerMove}
+                            onPointerUp={handlePointerUp}
+                          >
+                            <polygon 
+                              points={activeRectPoints.map(p => {
+                                const imgWidth = canvasRef.current?.width || 640;
+                                const imgHeight = canvasRef.current?.height || 480;
+                                const rect = containerRef.current?.getBoundingClientRect();
+                                const width = rect?.width || 640;
+                                const height = rect?.height || 360;
+                                const svgX = (p[0] / imgWidth) * width;
+                                const svgY = (p[1] / imgHeight) * height;
+                                return `${svgX},${svgY}`;
+                              }).join(' ')} 
+                              fill="rgba(59, 130, 246, 0.25)" 
+                              stroke="var(--accent-blue)" 
+                              strokeWidth="2.5" 
+                            />
+                            {activeRectPoints.map((p, idx) => {
+                              const imgWidth = canvasRef.current?.width || 640;
+                              const imgHeight = canvasRef.current?.height || 480;
+                              const rect = containerRef.current?.getBoundingClientRect();
+                              const width = rect?.width || 640;
+                              const height = rect?.height || 360;
+                              const svgX = (p[0] / imgWidth) * width;
+                              const svgY = (p[1] / imgHeight) * height;
+                              return (
+                                <circle 
+                                  key={idx}
+                                  cx={svgX}
+                                  cy={svgY}
+                                  r="9"
+                                  fill="white"
+                                  stroke="var(--accent-blue)"
+                                  strokeWidth="2.5"
+                                  style={{ cursor: 'move' }}
+                                  onPointerDown={(e) => handlePointerDown(idx, e)}
+                                />
+                              );
+                            })}
+                          </svg>
+                        )}
+                        <canvas ref={canvasRef} style={{ display: 'none' }} />
+                      </div>
+
+                      {/* Ready & adjustable options buttons */}
+                      {streamActive ? (
+                        <button 
+                          type="button" 
+                          className="btn btn-primary" 
+                          style={{ width: '100%', padding: '10px' }}
+                          onClick={handleFreezeFrame}
+                        >
+                          Ready (Take Snapshot)
+                        </button>
+                      ) : (
+                        <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                          {!showBoxOverlay ? (
                             <button 
                               type="button" 
-                              className="btn btn-ghost" 
-                              style={{ padding: '4px', color: 'var(--accent-red)' }} 
-                              onClick={() => handleDeleteZone(index)}
+                              className="btn btn-primary" 
+                              style={{ width: '100%', padding: '10px' }}
+                              onClick={() => {
+                                const imgWidth = canvasRef.current?.width || 640;
+                                const imgHeight = canvasRef.current?.height || 480;
+                                setActiveRectPoints([
+                                  [Math.round(imgWidth * 0.15), Math.round(imgHeight * 0.15)],
+                                  [Math.round(imgWidth * 0.85), Math.round(imgHeight * 0.15)],
+                                  [Math.round(imgWidth * 0.85), Math.round(imgHeight * 0.85)],
+                                  [Math.round(imgWidth * 0.15), Math.round(imgHeight * 0.85)]
+                                ]);
+                                setShowBoxOverlay(true);
+                              }}
                             >
-                              <Trash2 size={14} />
+                              Add Adjustable Rectangular Box
                             </button>
-                          </div>
+                          ) : (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', background: 'var(--bg-primary)', padding: '16px', borderRadius: '8px', border: '1px solid var(--border)' }}>
+                              
+                              {/* Option preset selection */}
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Select Zone Preset / Type:</label>
+                                <select 
+                                  className="select" 
+                                  value={zoneType} 
+                                  onChange={(e) => setZoneType(e.target.value)}
+                                >
+                                  <option value="worker_cabin">Employee Cabin (worker_cabin)</option>
+                                  <option value="conveyor_belt">Conveyor Belt (conveyor_belt)</option>
+                                  <option value="bagging_area">Bagging Area (bagging_area)</option>
+                                  <option value="entrance">Entrance</option>
+                                  <option value="exit">Exit</option>
+                                  <option value="cash_counter">Cash Counter</option>
+                                  <option value="custom">Custom Zone Name</option>
+                                </select>
+                              </div>
+
+                              {zoneType === 'custom' && (
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                  <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Custom Zone Name:</label>
+                                  <input 
+                                    type="text" 
+                                    className="input" 
+                                    placeholder="e.g. storage_room" 
+                                    value={customZoneName} 
+                                    onChange={(e) => setCustomZoneName(e.target.value)} 
+                                  />
+                                </div>
+                              )}
+
+                              {/* If Employee Cabin is chosen, show employee metadata inputs */}
+                              {zoneType === 'worker_cabin' && (
+                                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Employee Name:</label>
+                                    <input 
+                                      type="text" 
+                                      className="input" 
+                                      placeholder="e.g. Shashank Thoutam" 
+                                      value={empName}
+                                      onChange={(e) => setEmpName(e.target.value)}
+                                      required
+                                    />
+                                  </div>
+                                  <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                    <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Employee ID / Code:</label>
+                                    <input 
+                                      type="text" 
+                                      className="input" 
+                                      placeholder="e.g. EMP_101" 
+                                      value={empId}
+                                      onChange={(e) => setEmpId(e.target.value)}
+                                      required
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              <div style={{ display: 'flex', gap: '10px', marginTop: '6px' }}>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-ghost" 
+                                  style={{ flex: 1 }}
+                                  onClick={() => setStreamActive(true)}
+                                >
+                                  Recapture Video
+                                </button>
+                                <button 
+                                  type="button" 
+                                  className="btn btn-primary" 
+                                  style={{ flex: 1 }}
+                                  onClick={handleAddVisualZone}
+                                >
+                                  Save Zone & Enter
+                                </button>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        
-                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Min</span>
-                            <input 
-                              type="number" 
-                              className="input" 
-                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
-                              value={bbox.xMin}
-                              onChange={(e) => handleZoneChange(index, 'xMin', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Min</span>
-                            <input 
-                              type="number" 
-                              className="input" 
-                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
-                              value={bbox.yMin}
-                              onChange={(e) => handleZoneChange(index, 'yMin', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Max</span>
-                            <input 
-                              type="number" 
-                              className="input" 
-                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
-                              value={bbox.xMax}
-                              onChange={(e) => handleZoneChange(index, 'xMax', e.target.value)}
-                              required
-                            />
-                          </div>
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
-                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Max</span>
-                            <input 
-                              type="number" 
-                              className="input" 
-                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
-                              value={bbox.yMax}
-                              onChange={(e) => handleZoneChange(index, 'yMax', e.target.value)}
-                              required
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
+
 
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
                 <button 

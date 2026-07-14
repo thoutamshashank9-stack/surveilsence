@@ -38,6 +38,9 @@ class EmployeeAnalyticsWorker:
         
         # POS transaction scans buffer: list of dicts (timestamp, employee_id, camera_id, ticket_id)
         self.pos_transactions: List[Dict[str, Any]] = []
+        
+        # Cache for DB camera employee assignments
+        self.camera_employee_cache: Dict[str, Dict[str, Any]] = {}
 
     async def start(self) -> None:
         if self.running:
@@ -46,6 +49,7 @@ class EmployeeAnalyticsWorker:
         
         # 1. Initialize Homography Calibrators from database cameras
         await self._load_camera_calibrations()
+        await self._load_camera_employee_mappings()
         
         # 2. Subscribe to Event Bus
         self.event_bus.subscribe(EventType.DETECTION, self.process_detection)
@@ -54,6 +58,7 @@ class EmployeeAnalyticsWorker:
         # 3. Start cleanup worker loop for stale shifts/interactions
         self.task = asyncio.create_task(self._cleanup_loop())
         logger.info("Employee Analytics Worker started")
+
 
     async def stop(self) -> None:
         if not self.running:
@@ -341,6 +346,9 @@ class EmployeeAnalyticsWorker:
                 async with self.lock:
                     now = datetime.now()
                     
+                    # 0. Reload camera employee mappings from DB
+                    await self._load_camera_employee_mappings()
+                    
                     # 1. Clean up stale interactions (no updates for 30s)
                     for key, interaction in list(self.active_interactions.items()):
                         if (now - interaction["last_seen"]).total_seconds() > 30.0:
@@ -352,6 +360,7 @@ class EmployeeAnalyticsWorker:
                             # Close the shift in the active memory list
                             await self._save_shift_to_db(shift)
                             self.active_shifts.pop(employee_id, None)
+
                             
             except asyncio.CancelledError:
                 break
@@ -440,8 +449,34 @@ class EmployeeAnalyticsWorker:
                 db_shift.total_idle_seconds = shift["total_idle_seconds"]
                 await db.commit()
 
+    async def _load_camera_employee_mappings(self) -> None:
+        """Fetch custom employee assignments from camera database configurations."""
+        try:
+            async with AsyncSessionLocal() as db:
+                res = await db.execute(select(Camera))
+                cameras = res.scalars().all()
+                for cam in cameras:
+                    cfg = cam.config_json or {}
+                    zones = cfg.get("zones", [])
+                    for zone in zones:
+                        if zone.get("name") == "worker_cabin":
+                            emp_id = zone.get("employee_id")
+                            emp_name = zone.get("employee_name")
+                            if emp_id:
+                                self.camera_employee_cache[cam.id] = {
+                                    "employee_id": emp_id,
+                                    "employee_name": emp_name
+                                }
+                                break
+        except Exception as ex:
+            logger.error("Failed to load camera employee mappings", error=str(ex))
+
     def _resolve_employee_id(self, camera_id: str, track_id: int) -> str:
-        """Resolve employee ID mapping from static staff assignments or defaults."""
+        """Resolve employee ID mapping from custom camera zones, static staff assignments, or defaults."""
+        cached = self.camera_employee_cache.get(camera_id)
+        if cached and cached.get("employee_id"):
+            return cached["employee_id"]
+
         assignments = getattr(self.settings, "staff_assignments", [])
         for a in assignments:
             if getattr(a, "camera_id", None) == camera_id:
@@ -450,3 +485,4 @@ class EmployeeAnalyticsWorker:
 
     def _distance(self, p1: Tuple[float, float], p2: Tuple[float, float]) -> float:
         return ((p1[0] - p2[0])**2 + (p1[1] - p2[1])**2)**0.5
+
