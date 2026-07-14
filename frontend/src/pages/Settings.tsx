@@ -14,6 +14,7 @@ export const Settings: React.FC = () => {
   const [isEditMode, setIsEditMode] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [error, setError] = useState<string>('');
+  const [formZones, setFormZones] = useState<any[]>([]);
 
   // New/Edit Camera Form Data
   const [formData, setFormData] = useState({
@@ -25,6 +26,7 @@ export const Settings: React.FC = () => {
     stream_type: 'sub',
     fps_cap: 30,
   });
+
 
   // Global Notification States
   const [notificationsConfig, setNotificationsConfig] = useState({
@@ -99,6 +101,53 @@ export const Settings: React.FC = () => {
     }));
   };
 
+  const getBbox = (points: number[][]) => {
+    if (!points || points.length === 0) return { xMin: 0, yMin: 0, xMax: 100, yMax: 100 };
+    const xs = points.map(p => p[0]);
+    const ys = points.map(p => p[1]);
+    return {
+      xMin: Math.min(...xs),
+      yMin: Math.min(...ys),
+      xMax: Math.max(...xs),
+      yMax: Math.max(...ys)
+    };
+  };
+
+  const handleZoneChange = (index: number, field: string, value: any) => {
+    const updated = [...formZones];
+    if (field === 'xMin' || field === 'yMin' || field === 'xMax' || field === 'yMax') {
+      const currentBbox = getBbox(updated[index].points);
+      const newBbox = { ...currentBbox, [field]: Number(value) };
+      updated[index].points = [
+        [newBbox.xMin, newBbox.yMin],
+        [newBbox.xMax, newBbox.yMin],
+        [newBbox.xMax, newBbox.yMax],
+        [newBbox.xMin, newBbox.yMax]
+      ];
+    } else if (field === 'restricted') {
+      updated[index] = { ...updated[index], [field]: Boolean(value) };
+    } else {
+      updated[index] = { ...updated[index], [field]: value };
+    }
+    setFormZones(updated);
+  };
+
+  const handleAddZone = () => {
+    setFormZones([
+      ...formZones,
+      {
+        name: `zone_${formZones.length + 1}`,
+        type: 'polygon',
+        points: [[100, 100], [500, 100], [500, 500], [100, 500]],
+        restricted: false
+      }
+    ]);
+  };
+
+  const handleDeleteZone = (index: number) => {
+    setFormZones(formZones.filter((_, idx) => idx !== index));
+  };
+
   const handleOpenAddModal = () => {
     setIsEditMode(false);
     setFormData({
@@ -110,6 +159,7 @@ export const Settings: React.FC = () => {
       stream_type: 'sub',
       fps_cap: 30,
     });
+    setFormZones([]);
     setError('');
     setShowAddModal(true);
   };
@@ -125,6 +175,7 @@ export const Settings: React.FC = () => {
       stream_type: camera.config_json?.stream_type || 'sub',
       fps_cap: camera.config_json?.fps_cap || 30,
     });
+    setFormZones(camera.config_json?.zones || []);
     setError('');
     setShowAddModal(true);
   };
@@ -139,10 +190,6 @@ export const Settings: React.FC = () => {
 
     setSubmitting(true);
     try {
-      const existingZones = isEditMode
-        ? (cameras.find((c) => c.id === formData.id)?.config_json?.zones || [])
-        : [];
-
       const payload = {
         id: formData.id.trim(),
         name: formData.name.trim(),
@@ -151,7 +198,7 @@ export const Settings: React.FC = () => {
         enabled: formData.enabled,
         stream_type: formData.stream_type,
         fps_cap: formData.fps_cap,
-        zones: existingZones
+        zones: formZones
       };
 
       if (isEditMode) {
@@ -168,6 +215,7 @@ export const Settings: React.FC = () => {
       setSubmitting(false);
     }
   };
+
 
   const handleDeleteCamera = async (id: string) => {
     if (!window.confirm(`Are you sure you want to delete camera "${id}"? This will permanently remove its historical records.`)) {
@@ -534,7 +582,9 @@ export const Settings: React.FC = () => {
         }}>
           <div className="card fade-in" style={{
             width: '100%',
-            maxWidth: '500px',
+            maxWidth: '540px',
+            maxHeight: '90vh',
+            overflowY: 'auto',
             backgroundColor: 'var(--bg-secondary)',
             padding: '28px',
             boxShadow: '0 20px 50px rgba(0, 0, 0, 0.6)',
@@ -641,6 +691,108 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
 
+              {/* Zones Configurator */}
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '16px', marginTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                  <h4 style={{ fontSize: '0.85rem', fontWeight: 600, margin: 0 }}>Analytical Zones (Rectangular Boxes)</h4>
+                  <button 
+                    type="button" 
+                    className="btn btn-ghost" 
+                    style={{ padding: '4px 10px', fontSize: '0.75rem', height: 'auto', minHeight: 'unset' }}
+                    onClick={handleAddZone}
+                  >
+                    <Plus size={12} style={{ marginRight: '4px' }} />
+                    Add Zone
+                  </button>
+                </div>
+                
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                  {formZones.map((zone, index) => {
+                    const bbox = getBbox(zone.points);
+                    return (
+                      <div key={index} style={{ background: 'var(--bg-primary)', padding: '12px', borderRadius: '8px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                          <input 
+                            type="text" 
+                            className="input" 
+                            style={{ padding: '4px 8px', fontSize: '0.8rem', width: '180px' }}
+                            value={zone.name}
+                            placeholder="zone_name"
+                            onChange={(e) => handleZoneChange(index, 'name', e.target.value)}
+                            required
+                          />
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+                            <label style={{ display: 'flex', alignItems: 'center', gap: '4px', fontSize: '0.75rem', cursor: 'pointer' }}>
+                              <input 
+                                type="checkbox" 
+                                checked={zone.restricted || false} 
+                                onChange={(e) => handleZoneChange(index, 'restricted', e.target.checked)}
+                              />
+                              Restricted
+                            </label>
+                            <button 
+                              type="button" 
+                              className="btn btn-ghost" 
+                              style={{ padding: '4px', color: 'var(--accent-red)' }} 
+                              onClick={() => handleDeleteZone(index)}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        </div>
+                        
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: '8px' }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Min</span>
+                            <input 
+                              type="number" 
+                              className="input" 
+                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                              value={bbox.xMin}
+                              onChange={(e) => handleZoneChange(index, 'xMin', e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Min</span>
+                            <input 
+                              type="number" 
+                              className="input" 
+                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                              value={bbox.yMin}
+                              onChange={(e) => handleZoneChange(index, 'yMin', e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>X Max</span>
+                            <input 
+                              type="number" 
+                              className="input" 
+                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                              value={bbox.xMax}
+                              onChange={(e) => handleZoneChange(index, 'xMax', e.target.value)}
+                              required
+                            />
+                          </div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                            <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Y Max</span>
+                            <input 
+                              type="number" 
+                              className="input" 
+                              style={{ padding: '4px', fontSize: '0.8rem', textAlign: 'center' }}
+                              value={bbox.yMax}
+                              onChange={(e) => handleZoneChange(index, 'yMax', e.target.value)}
+                              required
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
               <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '12px' }}>
                 <button 
                   type="button" 
@@ -662,6 +814,7 @@ export const Settings: React.FC = () => {
           </div>
         </div>
       )}
+
     </div>
   );
 };
