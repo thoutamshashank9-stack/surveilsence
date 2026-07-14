@@ -255,19 +255,40 @@ async def stream_camera(
         pass
         
     async def frame_generator():
+        import cv2
+        import numpy as np
+        import time
         while True:
             ret, frame = camera_manager.get_frame(camera_id)
-            if ret and frame is not None:
-                try:
-                    jpeg_bytes = frame_to_jpeg(frame, quality=70)
-                    yield (
-                        b"--frame\r\n"
-                        b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
-                    )
-                except Exception as ex:
-                    logger.error("Error generating stream frame", camera_id=camera_id, error=str(ex))
+            if not ret or frame is None:
+                # Generate offline placeholder frame with live ticking clock
+                frame = np.zeros((360, 640, 3), dtype=np.uint8)
+                frame[:] = (30, 30, 30) # Dark grey background
+                
+                # Draw grid lines
+                for gx in range(0, 640, 40):
+                    cv2.line(frame, (gx, 0), (gx, 360), (45, 45, 45), 1)
+                for gy in range(0, 360, 40):
+                    cv2.line(frame, (0, gy), (640, gy), (45, 45, 45), 1)
+                    
+                ts_str = time.strftime("%Y-%m-%d %H:%M:%S")
+                cv2.putText(frame, f"CAM: {camera_id.upper()}", (40, 80), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (255, 255, 255), 2)
+                cv2.putText(frame, "STATUS: OFFLINE (Reconnecting...)", (40, 130), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (50, 100, 255), 2)
+                cv2.putText(frame, f"TIME: {ts_str}", (40, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (180, 180, 180), 1)
+                cv2.putText(frame, "Ensure RTSP Server app is running on your phone", (40, 240), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 120, 120), 1)
+                cv2.putText(frame, "And camera IP matches source url", (40, 270), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (120, 120, 120), 1)
+                
+            try:
+                jpeg_bytes = frame_to_jpeg(frame, quality=70)
+                yield (
+                    b"--frame\r\n"
+                    b"Content-Type: image/jpeg\r\n\r\n" + jpeg_bytes + b"\r\n"
+                )
+            except Exception as ex:
+                logger.error("Error generating stream frame", camera_id=camera_id, error=str(ex))
             # Limit loop rate
             await asyncio.sleep(0.04)  # ~25 FPS max
+
             
     return StreamingResponse(
         frame_generator(),

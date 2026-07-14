@@ -39,7 +39,7 @@ class CameraWorker:
         self.alert_manager = alert_manager
         
         self.camera_id = config.id
-        self.alert_manager._init_camera_classifiers(self.camera_id)
+        self.alert_manager._init_camera_classifiers(self.camera_id, config)
         v_tracker = self.alert_manager.velocity_trackers.get(self.camera_id)
         h_calib = v_tracker.homography if v_tracker else None
 

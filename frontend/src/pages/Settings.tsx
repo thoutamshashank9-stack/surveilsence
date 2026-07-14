@@ -967,11 +967,7 @@ export const Settings: React.FC = () => {
                             ref={imgRef}
                             src={`/api/v1/cameras/${formData.id || 'phone cam'}/stream?t=${Date.now()}`}
                             style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-                            crossOrigin="anonymous"
                             alt="Live Stream Preview"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1557804506-669a67965ba0?auto=format&fit=crop&w=640&q=80';
-                            }}
                           />
                         ) : (
                           <img 

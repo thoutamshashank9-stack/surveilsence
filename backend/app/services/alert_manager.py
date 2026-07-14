@@ -29,8 +29,9 @@ class AlertManager:
         self.velocity_trackers: Dict[str, VelocityTracker] = {}
         self.velocity_loitering_classifiers: Dict[str, VelocityGatedLoiteringClassifier] = {}
         self.concealment_classifiers: Dict[str, ConcealmentClassifier] = {}
+        self.camera_configs: Dict[str, Any] = {}
 
-    def _init_camera_classifiers(self, camera_id: str) -> None:
+    def _init_camera_classifiers(self, camera_id: str, cam_cfg: Optional[Any] = None) -> None:
         """
         Lazily initialize homography, velocity tracking, and behavioral classifiers
         for a camera feed from its database/profile configuration.
@@ -38,13 +39,19 @@ class AlertManager:
         if camera_id in self.sweethearting_classifiers:
             return
 
-        # Find camera config using safe getattr
-        cam_cfg = None
-        cameras = getattr(self.settings, "cameras", [])
-        for c in cameras:
-            if getattr(c, "id", None) == camera_id:
-                cam_cfg = c
-                break
+        if cam_cfg is not None:
+            self.camera_configs[camera_id] = cam_cfg
+        else:
+            cam_cfg = self.camera_configs.get(camera_id)
+
+        if not cam_cfg:
+            # Find camera config using safe getattr from static settings
+            cameras = getattr(self.settings, "cameras", [])
+            for c in cameras:
+                if getattr(c, "id", None) == camera_id:
+                    cam_cfg = c
+                    self.camera_configs[camera_id] = cam_cfg
+                    break
 
         if not cam_cfg:
             logger.warning("No settings configuration found for camera, skipping behavioral initialization", camera_id=camera_id)
