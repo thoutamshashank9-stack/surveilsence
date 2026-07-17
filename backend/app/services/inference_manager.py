@@ -24,7 +24,15 @@ class InferenceManager:
         conf_thresh = self.settings.inference.detection.confidence_threshold
         classes = self.settings.inference.detection.classes
         input_size = tuple(self.settings.inference.detection.input_size)
-        model_path = self.settings.inference.detection.model_path
+        
+        # Dynamically resolve path from model registry if available
+        try:
+            from app.services.model_registry import ModelRegistry
+            registry = ModelRegistry(self.settings)
+            resolved_path = registry.get_model_path(model_name, "detection")
+            model_path = resolved_path if resolved_path else self.settings.inference.detection.model_path
+        except Exception:
+            model_path = self.settings.inference.detection.model_path
 
         # Phase 7: Apply DirectML Graph Surgery for Transformer architectures
         if (
@@ -62,7 +70,7 @@ class InferenceManager:
                     backend=self.backend,
                     model_path=model_path,
                     confidence_threshold=conf_thresh,
-                    input_size=input_size[0]
+                    input_size=384
                 )
             except Exception as e:
                 logger.error("Failed to initialize RF-DETR Nano, falling back to Mock", error=str(e))
