@@ -138,3 +138,10 @@ async def update_notifications(
     settings.notifications.whatsapp.token = payload.whatsapp.token
 
     return {"status": "success", "message": "Notification configurations updated successfully"}
+
+@router.get("/capabilities", summary="Get system feature flags and capabilities")
+async def get_capabilities(
+    settings: Settings = Depends(get_app_settings)
+):
+    """Retrieve active feature flags and capabilities of the platform."""
+    return settings.features

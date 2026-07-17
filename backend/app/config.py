@@ -162,10 +162,19 @@ class SweetheartingRuleConfig(BaseModel):
     bagging_zone: str = "bagging"
     time_threshold: float = 3.0
 
+class PoseConfig(BaseModel):
+    enabled: bool = False
+    model_id: str = "rtmpose-t"
+    onnx_path: str = "models/registry/pose/rtmpose-t.onnx"
+    input_size: List[int] = [256, 192]
+    conf_threshold: float = 0.3
+    license: str = "Apache-2.0"
+    backend: str = "onnxruntime"
+
 class ConcealmentRuleConfig(BaseModel):
     enabled: bool = False
     proximity_threshold: float = 0.3
-    pose_model: str = "yolov8n-pose.onnx"
+    pose: PoseConfig = PoseConfig()
 
 class VelocityLoiteringRuleConfig(BaseModel):
     enabled: bool = False
@@ -183,6 +192,18 @@ class LoRaConfig(BaseModel):
     spreading_factor: int = 7
     gpio_pins: Dict[str, int] = {}
 
+class FeatureFlags(BaseModel):
+    footfall: bool = True
+    dwell: bool = True
+    heatmaps: bool = True
+    queues: bool = True
+    employee_bi: bool = True
+    pos_conversion: bool = True
+    concealment: bool = False      # True only after RTMPose wired + tests pass
+    sweethearting: bool = False
+    vlm_verify: bool = False
+    cross_camera_reid: bool = False
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -196,6 +217,7 @@ class Settings(BaseSettings):
     alerts: AlertConfig = AlertConfig()
     analytics: AnalyticsConfig = AnalyticsConfig()
     notifications: NotificationConfig = NotificationConfig()
+    features: FeatureFlags = FeatureFlags()
     vlm: VLMConfig = VLMConfig()
     database: DatabaseConfig = DatabaseConfig()
     logging: LoggingConfig = LoggingConfig()

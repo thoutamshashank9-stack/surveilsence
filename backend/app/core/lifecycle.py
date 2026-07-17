@@ -19,6 +19,34 @@ from app.api.websocket.events import EventBroadcaster
 
 logger = get_logger(__name__)
 
+def validate_models(settings):
+    import os
+    from pathlib import Path
+    from app.services.model_registry import ensure_model, LicenseError, ModelMissingError
+    
+    registry_root = Path(settings.inference.detection.model_path).parent
+    
+    # 1. Validate detection model
+    try:
+        ensure_model("detection", settings.inference.detection.model, registry_root, allow_download=False)
+    except (LicenseError, ModelMissingError) as e:
+        if os.getenv("ALLOW_MOCK_AI") == "1":
+            logger.warning(f"DEV ONLY: Model validation warning: {e}")
+        else:
+            logger.error(f"FATAL model/license error: {e}")
+            raise SystemExit(f"FATAL model/license error: {e}")
+            
+    # 2. Validate pose model if enabled
+    if settings.behavioral.concealment.enabled and settings.behavioral.concealment.pose.enabled:
+        try:
+            ensure_model("pose", settings.behavioral.concealment.pose.model_id, registry_root, allow_download=False)
+        except (LicenseError, ModelMissingError) as e:
+            if os.getenv("ALLOW_MOCK_AI") == "1":
+                logger.warning(f"DEV ONLY: Model validation warning: {e}")
+            else:
+                logger.error(f"FATAL model/license error: {e}")
+                raise SystemExit(f"FATAL model/license error: {e}")
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
@@ -31,6 +59,7 @@ async def lifespan(app: FastAPI):
     )
     
     logger.info("Initializing Edge AI CCTV Analytics Platform...")
+    validate_models(settings)
     start_time = time.time()
     
     # 2. Init Database

@@ -1,5 +1,5 @@
 # Use official slim Python image
-FROM python:3.11-slim
+FROM python:3.12-slim-bookworm
 
 # Prevent writing pyc files and enable buffering
 ENV PYTHONDONTWRITEBYTECODE=1

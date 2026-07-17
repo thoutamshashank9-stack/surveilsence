@@ -130,7 +130,8 @@ class AlertManager:
         proximity_threshold = getattr(conceal_cfg, "proximity_threshold", 0.3) if conceal_cfg else 0.3
 
         self.concealment_classifiers[camera_id] = ConcealmentClassifier(
-            proximity_threshold=proximity_threshold
+            proximity_threshold=proximity_threshold,
+            settings=self.settings
         )
         logger.info("Initialized velocity loitering and concealment classifiers", camera_id=camera_id)
 
@@ -148,7 +149,8 @@ class AlertManager:
         camera_id: str,
         detections: sv.Detections,
         zone_states: Dict[str, Set[int]],
-        line_crossings: List[Tuple[int, str, str]]  # list of (track_id, line_name, direction)
+        line_crossings: List[Tuple[int, str, str]],  # list of (track_id, line_name, direction)
+        frame: Optional[Any] = None
     ) -> List[Dict[str, Any]]:
         """
         Evaluate alert rules and retail behavioral classifiers against current frame state.
@@ -333,7 +335,9 @@ class AlertManager:
                     centroid=(bx, by),
                     frame_timestamp=curr_time,
                     keypoints=keypoints,
-                    product_disappeared=product_disappeared
+                    product_disappeared=product_disappeared,
+                    frame=frame,
+                    bbox=bbox
                 )
                 if anomaly and not in_cooldown("concealment", track_id, 30):
                     trigger_alert(

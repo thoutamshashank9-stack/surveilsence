@@ -117,7 +117,8 @@ class CameraWorker:
                     camera_id=self.camera_id,
                     detections=tracked,
                     zone_states=zone_states,
-                    line_crossings=line_crossings
+                    line_crossings=line_crossings,
+                    frame=frame
                 )
                 
                 # Emit alerts to database/event bus
