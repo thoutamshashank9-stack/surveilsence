@@ -2,14 +2,14 @@
   "models": [
     {
       "name": "rtdetrv2_r18vd",
+      "model_id": "rtdetrv2_r18vd",
       "file": "rtdetrv2_r18vd.onnx",
-      "input_size": [
-        640,
-        640
-      ],
+      "input_size": [640, 640],
       "classes": 80,
       "license": "Apache-2.0",
-      "description": "RT-DETRv2 R18 - Real-Time Detection Transformer (Apache-2.0)"
+      "description": "RT-DETRv2 R18 - Real-Time Detection Transformer (Apache-2.0)",
+      "download_url": "https://huggingface.co/thoutamshashank9-stack/surveilsence/resolve/main/models/registry/detection/rtdetrv2_r18vd.onnx",
+      "sha256": "583a236ac21c95a7fd94f284fc21485e42355bfef82c27011ba78fbc09ee87e2"
     }
   ]
 }

@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "name": "osnet_x0_25",
+      "model_id": "osnet_x0_25",
+      "file": "osnet_x0_25.onnx",
+      "input_size": [128, 256],
+      "license": "MIT",
+      "description": "OSNet x0.25 - Lightweight Omnidirectional Person Re-Identification (MIT)",
+      "download_url": "https://huggingface.co/openmmlab/mmpose/resolve/main/osnet_x0_25.onnx"
+    }
+  ]
+}

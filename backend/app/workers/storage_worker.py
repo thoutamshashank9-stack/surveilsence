@@ -66,20 +66,22 @@ class StorageWorker:
             # Map event payload back to DB Event schema
             # Payloads have: camera_id, track_id, zone_name/line_name, timestamp, duration_seconds/direction etc
             event_type = EventType.ZONE_ENTRY
+            meta = {}
+            if "global_person_id" in data:
+                meta["global_person_id"] = data.get("global_person_id")
+
             if "line_name" in data:
                 event_type = EventType.LINE_CROSS
                 zone = data.get("line_name")
-                meta = {"direction": data.get("direction")}
+                meta["direction"] = data.get("direction")
                 dur = None
             elif "duration_seconds" in data:
                 event_type = EventType.ZONE_EXIT
                 zone = data.get("zone_name")
-                meta = {}
                 dur = data.get("duration_seconds")
             else:
                 event_type = EventType.ZONE_ENTRY
                 zone = data.get("zone_name")
-                meta = {}
                 dur = None
 
             self.event_buffer.append({

@@ -26,6 +26,81 @@ def _sha256(path: Path) -> str:
             h.update(chunk)
     return h.hexdigest()
 
+DOWNLOAD_PROGRESS: Dict[str, Dict[str, Any]] = {}
+
+def download_file_with_resume(model_id: str, url: str, dest_path: Path, max_retries: int = 3) -> None:
+    import urllib.request
+    import time
+    
+    tmp_path = dest_path.with_suffix(".tmp")
+    dest_path.parent.mkdir(parents=True, exist_ok=True)
+    
+    DOWNLOAD_PROGRESS[model_id] = {
+        "status": "starting",
+        "percent": 0.0,
+        "downloaded": 0,
+        "total": 0,
+        "error": None
+    }
+    
+    headers = {}
+    if tmp_path.exists():
+        downloaded_bytes = tmp_path.stat().st_size
+        headers["Range"] = f"bytes={downloaded_bytes}-"
+    else:
+        downloaded_bytes = 0
+
+    for attempt in range(1, max_retries + 1):
+        try:
+            req = urllib.request.Request(url, headers=headers)
+            with urllib.request.urlopen(req) as response:
+                status_code = getattr(response, "status", getattr(response, "code", 200))
+                mode = "ab" if "Range" in headers and status_code == 206 else "wb"
+                if mode == "wb":
+                    downloaded_bytes = 0
+                
+                content_length = int(response.headers.get("Content-Length", 0))
+                total_size = content_length + downloaded_bytes
+                
+                DOWNLOAD_PROGRESS[model_id].update({
+                    "status": "downloading",
+                    "total": total_size
+                })
+                
+                with open(tmp_path, mode) as f:
+                    chunk_size = 1024 * 64
+                    while True:
+                        chunk = response.read(chunk_size)
+                        if not chunk:
+                            break
+                        f.write(chunk)
+                        downloaded_bytes += len(chunk)
+                        percent = (downloaded_bytes / total_size * 100) if total_size else 0.0
+                        DOWNLOAD_PROGRESS[model_id].update({
+                            "percent": round(percent, 1),
+                            "downloaded": downloaded_bytes
+                        })
+                        
+            if dest_path.exists():
+                dest_path.unlink()
+            tmp_path.rename(dest_path)
+            DOWNLOAD_PROGRESS[model_id].update({
+                "status": "completed",
+                "percent": 100.0,
+                "downloaded": downloaded_bytes
+            })
+            logger.info("Download completed successfully", model_id=model_id, dest=str(dest_path))
+            return
+        except Exception as e:
+            logger.warn(f"Download attempt {attempt} failed", error=str(e), url=url)
+            if attempt == max_retries:
+                DOWNLOAD_PROGRESS[model_id].update({
+                    "status": "failed",
+                    "error": str(e)
+                })
+                raise e
+            time.sleep(2 ** attempt)
+
 def ensure_model(task: str, model_id: str, registry_root: Path, allow_download: bool = True) -> Path:
     meta_path = registry_root / task / "metadata.json"
     if not meta_path.exists():
@@ -88,8 +163,7 @@ def ensure_model(task: str, model_id: str, registry_root: Path, allow_download: 
                 f"Model file missing: {path}. Place ONNX there or set download_url in metadata.json"
             )
         logger.info("Downloading model", task=task, model_id=model_id, url=url)
-        path.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(url, path)
+        download_file_with_resume(model_id, url, path)
 
     if expected:
         got = _sha256(path)

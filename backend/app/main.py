@@ -13,6 +13,7 @@ from app.api.v1.analytics import router as analytics_router
 from app.api.v1.auth import router as auth_router
 from app.api.v1.websocket import router as ws_router
 from app.api.v1.webrtc import router as webrtc_router
+from app.api.v1.models import router as models_router
 
 settings = get_settings()
 
@@ -54,6 +55,7 @@ app.include_router(analytics_router, prefix="/api/v1/analytics", tags=["analytic
 app.include_router(auth_router, prefix="/api/v1/auth", tags=["auth"])
 app.include_router(ws_router, prefix="/api/v1/ws", tags=["websocket"])
 app.include_router(webrtc_router, prefix="/api/v1", tags=["webrtc"])
+app.include_router(models_router, prefix="/api/v1/models", tags=["models"])
 
 @app.get("/", tags=["root"])
 async def root():

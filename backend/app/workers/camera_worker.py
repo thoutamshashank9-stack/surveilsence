@@ -53,6 +53,7 @@ class CameraWorker:
         # Tracks current zone occupancy: track_id -> set of zone names
         self.track_zones: Dict[int, Set[str]] = {}
         self.track_roles: Dict[int, str] = {}
+        self.global_ids: Dict[int, int] = {}
         
         # Rolling frame buffer for alerts: max 150 frames (5-10 seconds of video history)
         self.frame_buffer = deque(maxlen=150)
@@ -102,6 +103,10 @@ class CameraWorker:
                 # 3. Run Tracking
                 tracked = self.tracking_manager.update(self.camera_id, detections)
                 
+                global_ids_map = self.tracking_manager.assign_global_ids(self.camera_id, tracked, frame)
+                for tid, gid in global_ids_map.items():
+                    self.global_ids[tid] = gid
+                
                 # Publish frame analysis event (for web preview & UI stream)
                 await self._publish_frame_analysis(tracked)
                 
@@ -128,6 +133,10 @@ class CameraWorker:
                     if "metadata_json" not in alert or alert["metadata_json"] is None:
                         alert["metadata_json"] = {}
                     alert["metadata_json"]["alert_uuid"] = alert_uuid
+                    
+                    tid = alert.get("track_id")
+                    if tid is not None and tid in self.global_ids:
+                        alert["metadata_json"]["global_person_id"] = self.global_ids[tid]
                     
                     # Save media screenshot + video clip and publish
                     asyncio.create_task(self._save_media_and_publish_alert(alert, frame.copy()))
@@ -170,6 +179,7 @@ class CameraWorker:
                 # Anchor coordinates
                 detections_list.append({
                     "track_id": track_id,
+                    "global_person_id": self.global_ids.get(track_id),
                     "class_id": class_id,
                     "class_name": class_name,
                     "role": role,
@@ -221,6 +231,7 @@ class CameraWorker:
                             {
                                 "camera_id": self.camera_id,
                                 "track_id": track_id,
+                                "global_person_id": self.global_ids.get(track_id),
                                 "line_name": line_name,
                                 "direction": direction,
                                 "timestamp": time.time()
@@ -269,6 +280,7 @@ class CameraWorker:
                     {
                         "camera_id": self.camera_id,
                         "track_id": track_id,
+                        "global_person_id": self.global_ids.get(track_id),
                         "zone_name": zone_name,
                         "timestamp": curr_time
                     }
@@ -293,6 +305,7 @@ class CameraWorker:
                     {
                         "camera_id": self.camera_id,
                         "track_id": track_id,
+                        "global_person_id": self.global_ids.get(track_id),
                         "zone_name": zone_name,
                         "duration_seconds": dwell_time,
                         "timestamp": curr_time
@@ -345,8 +358,9 @@ class CameraWorker:
         except Exception as e:
             logger.error("Failed to generate alert media files", error=str(e))
             
-        # Continue with VLM verification if intrusion or loitering, else publish alert directly
-        if alert["alert_type"] in ["intrusion", "loitering"]:
+        # Continue with VLM verification if configured and enabled, else publish alert directly
+        vlm_enabled = self.settings.vlm.enabled or self.settings.vlm.backend != "simulated"
+        if self.settings.features.vlm_verify and vlm_enabled and alert["alert_type"] in ["intrusion", "loitering", "concealment"]:
             await self._run_vlm_verification_and_publish(alert, frame)
         else:
             await self.event_bus.publish(EventType.ALERT, alert)

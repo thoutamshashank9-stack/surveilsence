@@ -25,6 +25,13 @@ def select_backend(preference: str = "auto") -> InferenceBackendBase:
         logger.info("Selected HailoRT Hardware Backend")
         return backend
         
+    if pref_lower == "tensorrt" or (pref_lower == "auto" and "TensorrtExecutionProvider" in available):
+        from app.ai.backends.onnx_tensorrt import TensorRTBackend
+        backend = TensorRTBackend()
+        if backend.is_available():
+            logger.info("Selected TensorRT Backend")
+            return backend
+
     if pref_lower == "cuda" or (pref_lower == "auto" and "CUDAExecutionProvider" in available):
         backend = ONNXRuntimeCUDA()
         if backend.is_available():

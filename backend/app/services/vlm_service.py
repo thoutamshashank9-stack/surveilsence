@@ -25,10 +25,17 @@ class VLMVerificationService:
         import asyncio
         loop = asyncio.get_running_loop()
         
-        prompt = (
-            f"Analyze this CCTV security alert: alert_type={alert_type}, zone_name={zone_name}. "
-            f"Provide a short 1-sentence operator summary."
-        )
+        if alert_type == "concealment":
+            prompt = "Is the person in this image tucking or concealing an object inside their clothing? Answer YES or NO."
+        elif alert_type == "intrusion":
+            prompt = f"Is there a person visible in the restricted area '{zone_name}'? Answer YES or NO."
+        elif alert_type == "loitering":
+            prompt = f"Describe what the person in the '{zone_name}' area is doing."
+        else:
+            prompt = (
+                f"Analyze this CCTV security alert: alert_type={alert_type}, zone_name={zone_name}. "
+                f"Provide a short 1-sentence operator summary."
+            )
 
         try:
             # Execute query in thread pool

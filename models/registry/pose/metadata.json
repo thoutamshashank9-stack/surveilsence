@@ -1,0 +1,13 @@
+{
+  "models": [
+    {
+      "name": "rtmpose-t",
+      "model_id": "rtmpose-t",
+      "file": "rtmpose-t.onnx",
+      "input_size": [192, 256],
+      "license": "Apache-2.0",
+      "description": "RTMPose Tiny - Real-Time 2D Multi-Person Pose Estimation (Apache-2.0)",
+      "download_url": "https://huggingface.co/openmmlab/mmpose/resolve/main/rtmpose-t.onnx"
+    }
+  ]
+}

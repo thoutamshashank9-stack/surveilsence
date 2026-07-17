@@ -105,10 +105,20 @@ async def explain_alert_vlm(
     # Instantiate VLM service
     vlm_service = VLMVerificationService()
     
-    # Generate verification description
-    dummy_frame = np.zeros((480, 640, 3), dtype=np.uint8) # mock frame
+    # Generate verification description using real screenshot if available
+    import cv2
+    import os
+    
+    screenshot_path = alert.metadata_json.get("screenshot_path")
+    frame = None
+    if screenshot_path and os.path.exists(screenshot_path):
+        frame = cv2.imread(screenshot_path)
+        
+    if frame is None:
+        frame = np.zeros((480, 640, 3), dtype=np.uint8)
+        
     vlm_desc = await vlm_service.verify_frame(
-        frame=dummy_frame,
+        frame=frame,
         alert_type=alert.alert_type,
         zone_name=alert.zone_name or "Area"
     )

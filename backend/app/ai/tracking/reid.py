@@ -14,11 +14,14 @@ class GalleryEntry:
     last_ts: float
 
 class ReIDMatcher:
-    def __init__(self, onnx_path: str, dim: int = 512, threshold: float = 0.55):
-        self.session = ort.InferenceSession(
-            onnx_path,
-            providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
-        )
+    def __init__(self, onnx_path: str, dim: int = 512, threshold: float = 0.55, backend: Optional[Any] = None):
+        if backend is not None:
+            self.session = backend.create_session(onnx_path)
+        else:
+            self.session = ort.InferenceSession(
+                onnx_path,
+                providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+            )
         self.input_name = self.session.get_inputs()[0].name
         self.threshold = threshold
         self.gallery: List[GalleryEntry] = []
