@@ -59,6 +59,61 @@ export const Settings: React.FC = () => {
   const [notificationMessage, setNotificationMessage] = useState<string>('');
   const [notificationError, setNotificationError] = useState<string>('');
 
+  // AI Model Selector States
+  const [activeModel, setActiveModel] = useState<string>('rtdetrv2_r18');
+  const [modelLoading, setModelLoading] = useState<boolean>(false);
+  const [modelMessage, setModelMessage] = useState<string>('');
+
+  const MODEL_SPECS: Record<string, { label: string; input: string; license: string; description: string }> = {
+    rtdetrv2_r18: {
+      label: 'RT-DETRv2 ResNet-18 (Primary — Balanced)',
+      input: '640 × 640',
+      license: 'Apache-2.0',
+      description: 'Real-Time Detection Transformer'
+    },
+    rfdetr_nano: {
+      label: 'RF-DETR Nano (High Accuracy)',
+      input: '384 × 384',
+      license: 'Apache-2.0',
+      description: 'Ultra-fast Transformer Detector'
+    }
+  };
+
+  const fetchModelInfo = async () => {
+    try {
+      const res = await fetch('/api/v1/system/detection-model');
+      if (res.ok) {
+        const data = await res.json();
+        if (data.model) setActiveModel(data.model);
+      }
+    } catch (err) {
+      console.error('Failed to fetch detection model info:', err);
+    }
+  };
+
+  const switchModel = async (modelName: string) => {
+    setModelLoading(true);
+    setModelMessage('');
+    try {
+      const res = await fetch('/api/v1/system/detection-model', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model: modelName })
+      });
+      if (res.ok) {
+        setActiveModel(modelName);
+        setModelMessage(`✓ Switched to ${MODEL_SPECS[modelName]?.label || modelName}`);
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        setModelMessage(`✗ Failed: ${errData.detail || res.statusText}`);
+      }
+    } catch (err: any) {
+      setModelMessage(`✗ Error: ${err.message || 'Network request failed'}`);
+    } finally {
+      setModelLoading(false);
+    }
+  };
+
   const fetchSettings = async () => {
     try {
       const cams = await api.getCameras();
@@ -90,6 +145,7 @@ export const Settings: React.FC = () => {
           }
         });
       }
+      await fetchModelInfo();
     } catch (err: any) {
       console.error('Failed to load settings:', err);
     } finally {
@@ -495,27 +551,76 @@ export const Settings: React.FC = () => {
             <span>AI Detector Configuration</span>
           </h2>
           
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '0.85rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Object Detector Model</span>
-              <span style={{ fontWeight: 'bold' }}>RT-DETRv2 ResNet-18</span>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', fontSize: '0.85rem' }}>
+            {/* Model Selector Dropdown */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+              <label style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>Active Detection Model</label>
+              <select
+                className="select"
+                value={activeModel}
+                onChange={(e) => setActiveModel(e.target.value)}
+                disabled={modelLoading}
+                style={{ fontSize: '0.85rem' }}
+              >
+                {Object.entries(MODEL_SPECS).map(([key, spec]) => (
+                  <option key={key} value={key}>{spec.label}</option>
+                ))}
+              </select>
             </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Model Format</span>
-              <span>ONNX INT8 Quantized</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Classes Tracked</span>
-              <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Person (COCO-0)</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Input Dimensions</span>
-              <span>640 x 640 px (Letterboxed)</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Confidence Threshold</span>
-              <span>0.35</span>
-            </div>
+
+            {/* Dynamic Model Specs */}
+            {MODEL_SPECS[activeModel] && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', background: 'rgba(255,255,255,0.02)', borderRadius: '8px', padding: '12px', border: '1px solid var(--border)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Description</span>
+                  <span style={{ fontWeight: 'bold' }}>{MODEL_SPECS[activeModel].description}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Input Dimensions</span>
+                  <span>{MODEL_SPECS[activeModel].input} px</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '1px solid rgba(255,255,255,0.03)', paddingBottom: '8px' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>License</span>
+                  <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>{MODEL_SPECS[activeModel].license}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Classes Tracked</span>
+                  <span className="badge badge-info" style={{ fontSize: '0.65rem' }}>Person (COCO-0)</span>
+                </div>
+              </div>
+            )}
+
+            {/* Apply Button */}
+            <button
+              className="btn btn-primary"
+              style={{ padding: '9px 20px', alignSelf: 'flex-end', opacity: modelLoading ? 0.6 : 1 }}
+              disabled={modelLoading}
+              onClick={() => switchModel(activeModel)}
+            >
+              {modelLoading ? 'Applying…' : 'Apply Model'}
+            </button>
+
+            {/* Success / Error Message */}
+            {modelMessage && (
+              <div style={{
+                backgroundColor: modelMessage.startsWith('✓')
+                  ? 'rgba(16, 185, 129, 0.1)'
+                  : 'rgba(239, 68, 68, 0.1)',
+                border: `1px solid ${
+                  modelMessage.startsWith('✓')
+                    ? 'rgba(16, 185, 129, 0.25)'
+                    : 'rgba(239, 68, 68, 0.25)'
+                }`,
+                color: modelMessage.startsWith('✓')
+                  ? 'var(--accent-emerald)'
+                  : 'var(--accent-red)',
+                borderRadius: '8px',
+                padding: '10px 12px',
+                fontSize: '0.8rem'
+              }}>
+                {modelMessage}
+              </div>
+            )}
           </div>
         </div>
       </div>

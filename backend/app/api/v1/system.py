@@ -1,10 +1,11 @@
 import time
 import platform
 import os
+from typing import Literal, List, Optional
 import yaml
 import onnxruntime as ort
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from app.api.deps import get_app_settings
 from app.config import Settings
@@ -43,6 +44,34 @@ class NotificationsUpdateSchema(BaseModel):
     telegram: TelegramSchema
     email: EmailSchema
     whatsapp: WhatsAppSchema
+
+# ---------------------------------------------------------------------------
+# Schemas for Detection Model Configuration
+# ---------------------------------------------------------------------------
+
+ALLOWED_DETECTION_MODELS = ["rtdetrv2_r18", "rfdetr_nano", "mock"]
+
+_MODEL_REGISTRY = {
+    "rtdetrv2_r18": {
+        "model_path": "models/registry/detection/rtdetrv2_r18vd.onnx",
+        "input_size": [640, 640],
+        "license": "Apache-2.0",
+    },
+    "rfdetr_nano": {
+        "model_path": "models/registry/detection/rfdetr_nano.onnx",
+        "input_size": [384, 384],
+        "license": "Apache-2.0",
+    },
+    "mock": {
+        "model_path": "",
+        "input_size": [640, 640],
+        "license": "N/A",
+    },
+}
+
+class DetectionModelUpdateSchema(BaseModel):
+    model: Literal["rtdetrv2_r18", "rfdetr_nano", "mock"]
+    confidence_threshold: float = Field(default=0.35, ge=0.0, le=1.0)
 
 # ---------------------------------------------------------------------------
 # Endpoints
@@ -145,3 +174,82 @@ async def get_capabilities(
 ):
     """Retrieve active feature flags and capabilities of the platform."""
     return settings.features
+
+
+@router.get("/detection-model", summary="Get active detection model configuration")
+async def get_detection_model(
+    settings: Settings = Depends(get_app_settings),
+    current_user: dict = Depends(get_current_user)
+):
+    """Return the currently active detection model and its parameters."""
+    det = settings.inference.detection
+    model_name = det.model
+    license_info = _MODEL_REGISTRY.get(model_name, {}).get("license", "unknown")
+    return {
+        "model": model_name,
+        "model_path": det.model_path,
+        "input_size": det.input_size,
+        "confidence_threshold": det.confidence_threshold,
+        "license": license_info,
+    }
+
+
+@router.put("/detection-model", summary="Switch the active detection model at runtime")
+async def update_detection_model(
+    payload: DetectionModelUpdateSchema,
+    settings: Settings = Depends(get_app_settings),
+    current_user: dict = Depends(get_current_user)
+):
+    """Switch the detection model, update in-memory settings and persist to YAML."""
+    model_name = payload.model
+
+    if model_name not in ALLOWED_DETECTION_MODELS:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail=f"Model '{model_name}' is not allowed. Choose from: {ALLOWED_DETECTION_MODELS}",
+        )
+
+    registry_entry = _MODEL_REGISTRY[model_name]
+
+    # 1. Update in-memory settings
+    settings.inference.detection.model = model_name
+    settings.inference.detection.model_path = registry_entry["model_path"]
+    settings.inference.detection.input_size = registry_entry["input_size"]
+    settings.inference.detection.confidence_threshold = payload.confidence_threshold
+
+    # 2. Persist to YAML config file
+    path = settings.config_path
+    yaml_data = {}
+    if os.path.exists(path):
+        try:
+            with open(path, "r") as f:
+                yaml_data = yaml.safe_load(f) or {}
+        except Exception as e:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to read config file: {str(e)}",
+            )
+
+    # Merge detection block into the inference section
+    yaml_data.setdefault("inference", {})
+    yaml_data["inference"]["detection"] = {
+        "model": model_name,
+        "model_path": registry_entry["model_path"],
+        "input_size": registry_entry["input_size"],
+        "confidence_threshold": payload.confidence_threshold,
+    }
+
+    try:
+        with open(path, "w") as f:
+            yaml.safe_dump(yaml_data, f, default_flow_style=False)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to write config file: {str(e)}",
+        )
+
+    return {
+        "status": "success",
+        "active_model": model_name,
+        "message": f"Detection model switched to '{model_name}' with confidence {payload.confidence_threshold}",
+    }
