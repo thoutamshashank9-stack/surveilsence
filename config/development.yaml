@@ -149,4 +149,10 @@ behavioral:
   concealment:
     enabled: true
     proximity_threshold: 0.3
+  unusual_activity:
+    enabled: true
+    running_threshold_mps: 2.5
+    crowd_min_count: 4
+    crowd_radius_m: 2.0
+
 

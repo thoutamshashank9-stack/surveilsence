@@ -11,6 +11,7 @@ from app.ai.postprocessing.velocity_tracker import VelocityTracker
 from app.ai.behavioral.sweethearting import SweetheartingClassifier
 from app.ai.behavioral.concealment import ConcealmentClassifier
 from app.ai.behavioral.velocity_loitering import VelocityGatedLoiteringClassifier
+from app.ai.behavioral.unusual_activity import UnusualActivityClassifier
 
 logger = get_logger(__name__)
 
@@ -29,6 +30,7 @@ class AlertManager:
         self.velocity_trackers: Dict[str, VelocityTracker] = {}
         self.velocity_loitering_classifiers: Dict[str, VelocityGatedLoiteringClassifier] = {}
         self.concealment_classifiers: Dict[str, ConcealmentClassifier] = {}
+        self.unusual_activity_classifiers: Dict[str, UnusualActivityClassifier] = {}
         self.camera_configs: Dict[str, Any] = {}
 
     def _init_camera_classifiers(self, camera_id: str, cam_cfg: Optional[Any] = None) -> None:
@@ -133,7 +135,19 @@ class AlertManager:
             proximity_threshold=proximity_threshold,
             settings=self.settings
         )
-        logger.info("Initialized velocity loitering and concealment classifiers", camera_id=camera_id)
+
+        # 6. Initialize Unusual Activity Classifier
+        unusual_cfg = getattr(behavioral_cfg, "unusual_activity", None) if behavioral_cfg else None
+        running_thresh = getattr(unusual_cfg, "running_threshold_mps", 2.5) if unusual_cfg else 2.5
+        crowd_count = getattr(unusual_cfg, "crowd_min_count", 4) if unusual_cfg else 4
+        crowd_radius = getattr(unusual_cfg, "crowd_radius_m", 2.0) if unusual_cfg else 2.0
+
+        self.unusual_activity_classifiers[camera_id] = UnusualActivityClassifier(
+            running_threshold_mps=running_thresh,
+            crowd_min_count=crowd_count,
+            crowd_radius_m=crowd_radius
+        )
+        logger.info("Initialized unusual activity, velocity loitering, and concealment classifiers", camera_id=camera_id)
 
     def register_pos_scan(self, camera_id: str, timestamp: float, upc: str) -> None:
         """
@@ -348,6 +362,44 @@ class AlertManager:
                         desc=anomaly["description"]
                     )
 
+        # 5. Evaluate Rule-Based Unusual Activity Anomalies
+        unusual_classifier = self.unusual_activity_classifiers.get(camera_id)
+        unusual_rule_cfg = getattr(behavioral_cfg, "unusual_activity", None) if behavioral_cfg else None
+        if unusual_classifier and unusual_rule_cfg and getattr(unusual_rule_cfg, "enabled", True) and detections.tracker_id is not None:
+            # Build dictionary of all active centroids for spatial crowd density check
+            all_centroids: Dict[int, Tuple[float, float]] = {}
+            for idx, bbox in enumerate(detections.xyxy):
+                tid = int(detections.tracker_id[idx])
+                all_centroids[tid] = ((bbox[0] + bbox[2]) / 2.0, (bbox[1] + bbox[3]) / 2.0)
+
+            for idx, bbox in enumerate(detections.xyxy):
+                track_id = int(detections.tracker_id[idx])
+                bx = (bbox[0] + bbox[2]) / 2.0
+                by = (bbox[1] + bbox[3]) / 2.0
+                vel = active_track_velocities.get(track_id, 0.0)
+
+                anomaly = unusual_classifier.update(
+                    track_id=track_id,
+                    centroid=(bx, by),
+                    frame_timestamp=curr_time,
+                    ema_velocity=vel,
+                    bbox=bbox,
+                    all_centroids=all_centroids
+                )
+
+                if anomaly:
+                    event_type = anomaly.get("event", "UNUSUAL_ACTIVITY").lower()
+                    severity = "warning" if event_type in ("unusual_counterflow", "unusual_crowd_gathering") else "critical"
+                    if not in_cooldown(event_type, track_id, 15):
+                        trigger_alert(
+                            alert_type=event_type,
+                            severity=severity,
+                            track_id=track_id,
+                            zone_name="scene",
+                            desc=anomaly["description"],
+                            metadata={"anomaly_type": anomaly.get("anomaly_type"), "velocity_mps": vel}
+                        )
+
         # Clean up loitering dwell starts
         active_keys = set()
         for zone_name, track_ids in zone_states.items():
@@ -380,6 +432,9 @@ class AlertManager:
             sweet_classifier.cleanup()
         if conceal_classifier:
             conceal_classifier.cleanup()
+        unusual_classifier = self.unusual_activity_classifiers.get(camera_id)
+        if unusual_classifier:
+            unusual_classifier.cleanup()
 
         for key, ts in list(self.cooldowns.items()):
             if curr_time - ts > 86400:

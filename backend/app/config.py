@@ -181,10 +181,17 @@ class VelocityLoiteringRuleConfig(BaseModel):
     dwell_threshold_seconds: float = 30.0
     velocity_threshold_mps: float = 0.2
 
+class UnusualActivityRuleConfig(BaseModel):
+    enabled: bool = True
+    running_threshold_mps: float = 2.5
+    crowd_min_count: int = 4
+    crowd_radius_m: float = 2.0
+
 class BehavioralConfig(BaseModel):
     sweethearting: SweetheartingRuleConfig = SweetheartingRuleConfig()
     concealment: ConcealmentRuleConfig = ConcealmentRuleConfig()
     velocity_loitering: VelocityLoiteringRuleConfig = VelocityLoiteringRuleConfig()
+    unusual_activity: UnusualActivityRuleConfig = UnusualActivityRuleConfig()
 
 class LoRaConfig(BaseModel):
     enabled: bool = False
@@ -199,6 +206,7 @@ class FeatureFlags(BaseModel):
     queues: bool = True
     employee_bi: bool = True
     pos_conversion: bool = True
+    unusual_activity: bool = True
     concealment: bool = False      # True only after RTMPose wired + tests pass
     sweethearting: bool = False
     vlm_verify: bool = False
