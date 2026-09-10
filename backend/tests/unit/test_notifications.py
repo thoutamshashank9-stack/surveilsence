@@ -83,3 +83,14 @@ async def test_notification_dispatch(mock_settings):
         # 2. tmpfiles upload URL (for WhatsApp media upload)
         # 3. Telegram video URL
         assert mock_post.call_count >= 2
+
+@pytest.mark.asyncio
+async def test_send_test_telegram(mock_settings):
+    """Verify that send_test_telegram creates snapshot image and sends photo to Telegram."""
+    service = NotificationService(mock_settings)
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+        mock_post.return_value = MagicMock(status_code=200)
+        res = await service.send_test_telegram(bot_token="test_token_123", chat_id="test_chat_456")
+        assert res["status"] == "success"
+        assert mock_post.call_count >= 1
+

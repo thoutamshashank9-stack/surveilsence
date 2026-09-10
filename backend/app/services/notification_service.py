@@ -42,6 +42,57 @@ class NotificationService:
         if hasattr(self.settings, "notifications") and self.settings.notifications.email.enabled:
             await self._send_email(data)
 
+    async def send_test_telegram(self, bot_token: Optional[str] = None, chat_id: Optional[str] = None) -> Dict[str, Any]:
+        """Generate a test warning image and send it to the Telegram bot."""
+        import cv2
+        import numpy as np
+        import time
+
+        token = bot_token or getattr(self.settings.notifications.telegram, "bot_token", "")
+        cid = chat_id or getattr(self.settings.notifications.telegram, "chat_id", "")
+        if not token or not cid:
+            raise ValueError("Telegram bot_token and chat_id are required")
+
+        # Generate test warning image
+        img = np.zeros((480, 640, 3), dtype=np.uint8)
+        img[:] = (30, 30, 30)
+        # Grid lines
+        for x in range(0, 640, 50):
+            cv2.line(img, (x, 0), (x, 480), (45, 45, 45), 1)
+        for y in range(0, 480, 50):
+            cv2.line(img, (0, y), (640, y), (45, 45, 45), 1)
+
+        cv2.putText(img, "SURVEILSENCE SECURITY ALERT", (40, 180), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
+        cv2.putText(img, "WARNING: TEST SECURITY EVENT DETECTED", (40, 230), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 165, 255), 2)
+        cv2.putText(img, f"TIMESTAMP: {time.strftime('%Y-%m-%d %H:%M:%S')}", (40, 280), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (200, 200, 200), 1)
+        cv2.rectangle(img, (200, 120), (440, 320), (0, 0, 255), 2)
+
+        os.makedirs("data", exist_ok=True)
+        test_img_path = "data/telegram_test_warning.jpg"
+        cv2.imwrite(test_img_path, img)
+
+        alert_data = {
+            "camera_id": "TEST_CAM_01",
+            "alert_type": "test_warning",
+            "severity": "critical",
+            "zone_name": "Main Entrance",
+            "description": "TEST SECURITY ALERT: Rule-based unusual activity test warning with snapshot image.",
+            "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
+            "metadata_json": {"screenshot_path": test_img_path}
+        }
+
+        # Override temporary token/chat_id if custom parameters provided
+        orig_token = self.settings.notifications.telegram.bot_token
+        orig_chat = self.settings.notifications.telegram.chat_id
+        try:
+            self.settings.notifications.telegram.bot_token = token
+            self.settings.notifications.telegram.chat_id = cid
+            await self._send_telegram(alert_data)
+            return {"status": "success", "message": "Test warning image sent to Telegram bot successfully!"}
+        finally:
+            self.settings.notifications.telegram.bot_token = orig_token
+            self.settings.notifications.telegram.chat_id = orig_chat
+
     async def _send_telegram(self, alert_data: Dict[str, Any]) -> None:
         token = self.settings.notifications.telegram.bot_token
         chat_id = self.settings.notifications.telegram.chat_id

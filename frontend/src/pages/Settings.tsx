@@ -404,6 +404,34 @@ export const Settings: React.FC = () => {
     }
   };
 
+  const [testingTelegram, setTestingTelegram] = useState<boolean>(false);
+
+  const handleTestTelegram = async () => {
+    setTestingTelegram(true);
+    setNotificationMessage('');
+    setNotificationError('');
+    try {
+      const res = await fetch('/api/v1/system/notifications/test-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          bot_token: notificationsConfig.telegram.bot_token,
+          chat_id: notificationsConfig.telegram.chat_id
+        })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setNotificationMessage('✓ Success: Test warning snapshot sent to your Telegram bot!');
+      } else {
+        setNotificationError(`✗ Error: ${data.detail || 'Failed to send Telegram test image'}`);
+      }
+    } catch (err: any) {
+      setNotificationError(`✗ Network Error: ${err.message}`);
+    } finally {
+      setTestingTelegram(false);
+    }
+  };
+
   const handleSaveNotifications = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingNotifications(true);
@@ -701,6 +729,15 @@ export const Settings: React.FC = () => {
                     disabled={!notificationsConfig.telegram.enabled}
                   />
                 </div>
+                <button
+                  type="button"
+                  className="btn btn-secondary"
+                  style={{ padding: '7px 14px', fontSize: '0.75rem', marginTop: '6px', alignSelf: 'flex-start' }}
+                  disabled={!notificationsConfig.telegram.enabled || testingTelegram}
+                  onClick={handleTestTelegram}
+                >
+                  {testingTelegram ? 'Sending Test Warning...' : '⚡ Send Test Warning Image'}
+                </button>
               </div>
             </div>
 

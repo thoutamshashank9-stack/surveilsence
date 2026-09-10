@@ -168,6 +168,29 @@ async def update_notifications(
 
     return {"status": "success", "message": "Notification configurations updated successfully"}
 
+class TelegramTestSchema(BaseModel):
+    bot_token: Optional[str] = None
+    chat_id: Optional[str] = None
+
+@router.post("/notifications/test-telegram", summary="Dispatch a test security warning image to Telegram bot")
+async def test_telegram(
+    payload: Optional[TelegramTestSchema] = None,
+    settings: Settings = Depends(get_app_settings),
+    current_user: dict = Depends(get_current_user)
+):
+    """Dispatches a test security alert snapshot image with warning text to the configured Telegram bot."""
+    from app.services.notification_service import NotificationService
+    svc = NotificationService(settings)
+    token = payload.bot_token if payload else None
+    cid = payload.chat_id if payload else None
+    try:
+        result = await svc.send_test_telegram(bot_token=token, chat_id=cid)
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
 @router.get("/capabilities", summary="Get system feature flags and capabilities")
 async def get_capabilities(
     settings: Settings = Depends(get_app_settings)
