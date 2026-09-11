@@ -15,20 +15,19 @@ router = APIRouter()
 # Default verified bcrypt hash for the password 'admin'
 _DEFAULT_ADMIN_HASH = "$2b$12$SGSVxGhbv6IVMgOCINiz..Pg6L8H5oCXpaYerTyMo8xd0c7jcXZ96"
 
-ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "")
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
 ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 
-if not ADMIN_USERNAME or not ADMIN_PASSWORD_HASH:
-    ADMIN_USERNAME = ADMIN_USERNAME or "admin"
-    ADMIN_PASSWORD_HASH = ADMIN_PASSWORD_HASH or _DEFAULT_ADMIN_HASH
-    logger.warning(
-        "ADMIN_USERNAME and/or ADMIN_PASSWORD_HASH not set — using defaults "
-        "(username='admin', password='admin'). Change these for production."
-    )
+if not ADMIN_PASSWORD_HASH and not ADMIN_PASSWORD:
+    ADMIN_PASSWORD_HASH = _DEFAULT_ADMIN_HASH
 
 
 def _verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verify a plain-text password against a stored bcrypt hash with fallback."""
+    """Verify a plain-text password against stored password / bcrypt hash."""
+    admin_plain = os.environ.get("ADMIN_PASSWORD")
+    if admin_plain:
+        return plain_password == admin_plain
     try:
         # bcrypt checkpw requires bytes
         return bcrypt.checkpw(

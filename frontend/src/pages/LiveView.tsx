@@ -63,8 +63,42 @@ export const LiveView: React.FC = () => {
   if (loading) return <LoadingSpinner />;
   if (cameras.length === 0) {
     return (
-      <div className="card" style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)' }}>
-        No cameras configured. Go to settings to add a camera source.
+      <div 
+        className="card fade-in" 
+        style={{ 
+          textAlign: 'center', 
+          padding: '60px 24px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          gap: '16px' 
+        }}
+      >
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--accent-blue)'
+        }}>
+          <Eye size={28} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '6px' }}>No Camera Streams Available</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '440px' }}>
+            No real camera feeds are currently active. Add an RTSP or HTTP mobile phone camera feed in Settings to monitor real-time detections and telemetry.
+          </p>
+        </div>
+        <a 
+          href="/settings" 
+          className="btn btn-primary"
+          style={{ padding: '8px 20px', fontSize: '0.85rem', textDecoration: 'none' }}
+        >
+          Configure Camera Feeds
+        </a>
       </div>
     );
   }

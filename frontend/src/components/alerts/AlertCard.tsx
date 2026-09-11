@@ -86,6 +86,17 @@ export const AlertCard: React.FC<AlertCardProps> = ({ alert, onAcknowledge, onVl
           {alert.track_id && <span>Target: P{alert.track_id}</span>}
         </div>
         
+        {alert.metadata_json?.screenshot_path && (
+          <div style={{ marginTop: '8px', borderRadius: '6px', overflow: 'hidden', maxHeight: '160px', border: '1px solid var(--border)' }}>
+            <img 
+              src={`/api/v1/alerts/${alert.id}/snapshot`}
+              alt="Alert snapshot"
+              style={{ width: '100%', maxHeight: '160px', objectFit: 'contain', backgroundColor: 'rgba(0,0,0,0.2)' }}
+              onError={(e) => { (e.target as HTMLElement).style.display = 'none'; }}
+            />
+          </div>
+        )}
+        
         {alert.metadata_json?.vlm_description && (
           <div style={{
             marginTop: '10px',

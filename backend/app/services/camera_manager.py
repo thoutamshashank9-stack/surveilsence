@@ -61,9 +61,18 @@ class CameraStream:
                 # USB Camera
                 self.cap = cv2.VideoCapture(int(self.source))
             else:
-                self.cap = cv2.VideoCapture(self.source)
+                if self.source.lower().startswith("rtsp://"):
+                    import os
+                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+                    self.cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
+                else:
+                    self.cap = cv2.VideoCapture(self.source)
                 
             if self.cap.isOpened():
+                try:
+                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                except Exception:
+                    pass
                 self.status = CameraStatus.ONLINE
                 logger.info("Camera connected successfully", camera_id=self.camera_id)
                 return True

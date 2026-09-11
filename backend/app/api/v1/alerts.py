@@ -136,3 +136,19 @@ async def explain_alert_vlm(
     await db.commit()
     await db.refresh(alert)
     return alert
+
+@router.get("/{alert_id}/snapshot", summary="Retrieve alert snapshot warning image")
+async def get_alert_snapshot(
+    alert_id: int = Path(..., description="The ID of the alert"),
+    db: AsyncSession = Depends(get_db)
+):
+    import os
+    from fastapi.responses import FileResponse
+    alert = await db.get(Alert, alert_id)
+    if not alert:
+        raise HTTPException(status_code=404, detail="Alert not found")
+    meta = alert.metadata_json or {}
+    screenshot_path = meta.get("screenshot_path")
+    if not screenshot_path or not os.path.exists(screenshot_path):
+        raise HTTPException(status_code=404, detail="Snapshot image not found for this alert")
+    return FileResponse(screenshot_path, media_type="image/jpeg")

@@ -198,6 +198,15 @@ export const api = {
     if (dateStr) params.append('date', dateStr);
     const res = await fetch(`${API_BASE}/analytics/employee/interactions?${params.toString()}`, { headers: getHeaders() });
     return handleResponse<any[]>(res);
+  },
+
+  async testTelegram(payload: { bot_token?: string; chat_id?: string }): Promise<{ status: string; message: string }> {
+    const res = await fetch(`${API_BASE}/system/notifications/test-telegram`, {
+      method: 'POST',
+      headers: getHeaders(),
+      body: JSON.stringify(payload)
+    });
+    return handleResponse<{ status: string; message: string }>(res);
   }
 };
 export default api;

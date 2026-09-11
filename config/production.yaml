@@ -7,31 +7,18 @@ app:
   version: "0.1.0"
   debug: false
 
-# Camera Sources
-cameras:
-  - id: "cam_01"
-    name: "Main Entrance"
-    source: "../data/test_video.mp4"
-    type: "file"
-    enabled: true
-    stream_type: "main"
-    fps_cap: 30
-    zones:
-      - name: "entrance_line"
-        type: "line"
-        points: [[100, 400], [540, 400]]
-        direction: "horizontal"
-      - name: "lobby"
-        type: "polygon"
-        points: [[50, 200], [590, 200], [590, 450], [50, 450]]
-        restricted: true
-      - name: "checkout"
-        type: "polygon"
-        points: [[400, 100], [600, 100], [600, 300], [400, 300]]
-      - name: "restricted_area"
-        type: "polygon"
-        points: [[10, 10], [200, 10], [200, 150], [10, 150]]
-        restricted: true
+# Camera Sources (real camera streams configured via Settings UI or declared here)
+cameras: []
+# - id: phone_cam
+#   name: Mobile Phone Stream
+#   source: http://192.168.1.100:8080/video
+#   type: http
+#   enabled: true
+# - id: rtsp_cam
+#   name: IP Camera
+#   source: rtsp://admin:password@192.168.1.64:554/stream1
+#   type: rtsp
+#   enabled: true
 
 # Inference Settings
 inference:
@@ -60,18 +47,18 @@ inference:
 alerts:
   intrusion:
     enabled: true
-    zones: ["restricted_area"]
+    zones: []
     cooldown_seconds: 120
     severity: "critical"
   loitering:
     enabled: true
     threshold_seconds: 60
-    zones: ["lobby", "checkout"]
+    zones: []
     cooldown_seconds: 180
     severity: "warning"
   line_crossing:
     enabled: true
-    lines: ["entrance_line"]
+    lines: []
     cooldown_seconds: 10
     severity: "info"
   dwell_no_checkout:
@@ -79,6 +66,25 @@ alerts:
     threshold_seconds: 120
     cooldown_seconds: 180
     severity: "warning"
+
+# Behavioral Rules
+behavioral:
+  unusual_activity:
+    enabled: true
+    running_threshold_mps: 2.5
+    crowd_min_count: 4
+    crowd_radius_m: 2.0
+    flow_direction_deg: null
+  velocity_loitering:
+    enabled: true
+    dwell_threshold_seconds: 30.0
+    velocity_threshold_mps: 0.2
+  sweethearting:
+    enabled: false
+    time_threshold: 3.0
+  concealment:
+    enabled: false
+    proximity_threshold: 0.3
 
 # Analytics
 analytics:

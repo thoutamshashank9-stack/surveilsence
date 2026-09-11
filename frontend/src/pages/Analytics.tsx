@@ -130,6 +130,48 @@ export const Analytics: React.FC = () => {
     ? processedEmployees.reduce((prev, curr) => (prev.conversionVal > curr.conversionVal) ? prev : curr).id
     : 'None';
 
+  if (cameras.length === 0 && !loading) {
+    return (
+      <div 
+        className="card fade-in" 
+        style={{ 
+          textAlign: 'center', 
+          padding: '60px 24px', 
+          display: 'flex', 
+          flexDirection: 'column', 
+          alignItems: 'center', 
+          gap: '16px' 
+        }}
+      >
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--accent-blue)'
+        }}>
+          <ChartIcon size={28} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '1.1rem', fontWeight: 600, marginBottom: '6px' }}>No Analytics Data Available</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '440px' }}>
+            No cameras are currently configured. Connect a real camera feed in Settings to generate footfall counts, dwell metrics, heatmaps, and employee interaction analytics.
+          </p>
+        </div>
+        <a 
+          href="/settings" 
+          className="btn btn-primary"
+          style={{ padding: '8px 20px', fontSize: '0.85rem', textDecoration: 'none' }}
+        >
+          Configure Camera
+        </a>
+      </div>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
       {/* Control bar */}

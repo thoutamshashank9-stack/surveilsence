@@ -10,6 +10,52 @@ interface CameraGridProps {
 export const CameraGrid: React.FC<CameraGridProps> = ({ cameras }) => {
   const navigate = useNavigate();
 
+  if (cameras.length === 0) {
+    return (
+      <div 
+        className="card fade-in"
+        style={{
+          marginTop: '20px',
+          padding: '48px 24px',
+          textAlign: 'center',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          gap: '16px',
+          border: '1px dashed var(--border)',
+          backgroundColor: 'rgba(255, 255, 255, 0.02)'
+        }}
+      >
+        <div style={{
+          width: '56px',
+          height: '56px',
+          borderRadius: '50%',
+          backgroundColor: 'rgba(59, 130, 246, 0.1)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          color: 'var(--accent-blue)'
+        }}>
+          <CameraIcon size={28} />
+        </div>
+        <div>
+          <h3 style={{ fontSize: '1.05rem', fontWeight: 600, marginBottom: '6px' }}>No Camera Streams Connected</h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', maxWidth: '420px', margin: '0 auto' }}>
+            Connect a real camera stream (such as a mobile phone IP webcam or RTSP IP camera) in Settings to begin live surveillance and behavioral analytics.
+          </p>
+        </div>
+        <button 
+          className="btn btn-primary"
+          style={{ marginTop: '8px', padding: '8px 20px', fontSize: '0.85rem' }}
+          onClick={() => navigate('/settings')}
+        >
+          Add Camera Feed
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div style={{
       display: 'grid',
@@ -35,7 +81,7 @@ export const CameraGrid: React.FC<CameraGridProps> = ({ cameras }) => {
             </div>
           </div>
 
-          {/* Placeholder frame */}
+          {/* Live video feed preview */}
           <div style={{
             height: '160px',
             backgroundColor: 'rgba(0, 0, 0, 0.3)',
@@ -47,7 +93,7 @@ export const CameraGrid: React.FC<CameraGridProps> = ({ cameras }) => {
             position: 'relative',
             overflow: 'hidden'
           }}>
-            {camera.status === 'online' ? (
+            {camera.status === 'online' || camera.status === 'connecting' ? (
               <>
                 <img 
                   src={`/api/v1/cameras/${camera.id}/stream`} 
@@ -100,11 +146,12 @@ export const CameraGrid: React.FC<CameraGridProps> = ({ cameras }) => {
 
           {/* Zones count */}
           <div style={{ marginTop: '12px', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-            Configured Zones: {camera.config_json.zones.length}
+            Configured Zones: {camera.config_json?.zones?.length || 0}
           </div>
         </div>
       ))}
     </div>
   );
 };
+
 export default CameraGrid;

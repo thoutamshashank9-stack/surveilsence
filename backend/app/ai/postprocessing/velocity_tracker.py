@@ -36,8 +36,10 @@ class VelocityTracker:
         if self.homography and self.homography.is_calibrated():
             world_x, world_y = self.homography.pixel_to_world(pixel_x, pixel_y)
         else:
-            # Fallback to pixels
-            world_x, world_y = pixel_x, pixel_y
+            # Fallback to normalized real-world metric scale (~50 px per meter baseline for 640x480)
+            # Ensures running and loitering velocity thresholds work realistically on uncalibrated feeds
+            scale_px_per_m = 50.0
+            world_x, world_y = pixel_x / scale_px_per_m, pixel_y / scale_px_per_m
 
         if track_id not in self.track_states:
             self.track_states[track_id] = VelocityState(world_x, world_y, timestamp)

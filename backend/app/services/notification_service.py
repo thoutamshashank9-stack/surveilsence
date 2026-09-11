@@ -72,10 +72,10 @@ class NotificationService:
         cv2.imwrite(test_img_path, img)
 
         alert_data = {
-            "camera_id": "TEST_CAM_01",
+            "camera_id": "REAL_CAM_01",
             "alert_type": "test_warning",
             "severity": "critical",
-            "zone_name": "Main Entrance",
+            "zone_name": "Active Surveillance Zone",
             "description": "TEST SECURITY ALERT: Rule-based unusual activity test warning with snapshot image.",
             "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
             "metadata_json": {"screenshot_path": test_img_path}
@@ -99,13 +99,29 @@ class NotificationService:
         if not token or not chat_id:
             return
             
-        msg = (
-            f"⚠️ *SURVEILSENCE SECURITY ALERT* ⚠️\n"
-            f"*Severity*: {alert_data.get('severity', '').upper()}\n"
-            f"*Camera*: {alert_data.get('camera_id')}\n"
-            f"*Zone*: {alert_data.get('zone_name') or 'N/A'}\n"
-            f"*Description*: {alert_data.get('description')}\n"
-            f"*Time*: {alert_data.get('timestamp')}"
+        import html
+        severity_val = str(alert_data.get('severity', '')).upper()
+        camera_id_val = str(alert_data.get('camera_id', ''))
+        zone_val = str(alert_data.get('zone_name') or 'N/A')
+        desc_val = str(alert_data.get('description', ''))
+        time_val = str(alert_data.get('timestamp', ''))
+
+        msg_html = (
+            f"⚠️ <b>SURVEILSENCE SECURITY ALERT</b> ⚠️\n"
+            f"<b>Severity</b>: {html.escape(severity_val)}\n"
+            f"<b>Camera</b>: {html.escape(camera_id_val)}\n"
+            f"<b>Zone</b>: {html.escape(zone_val)}\n"
+            f"<b>Description</b>: {html.escape(desc_val)}\n"
+            f"<b>Time</b>: {html.escape(time_val)}"
+        )
+
+        msg_plain = (
+            f"⚠️ SURVEILSENCE SECURITY ALERT ⚠️\n"
+            f"Severity: {severity_val}\n"
+            f"Camera: {camera_id_val}\n"
+            f"Zone: {zone_val}\n"
+            f"Description: {desc_val}\n"
+            f"Time: {time_val}"
         )
         
         meta = alert_data.get("metadata_json", {})
@@ -114,39 +130,55 @@ class NotificationService:
         
         async with httpx.AsyncClient() as client:
             try:
-                # 1. Send Video Clip if available
-                if video_path and os.path.exists(video_path):
-                    url = f"https://api.telegram.org/bot{token}/sendVideo"
-                    with open(video_path, "rb") as video_file:
-                        files = {"video": video_file}
-                        data = {"chat_id": chat_id, "caption": msg, "parse_mode": "Markdown"}
-                        r = await client.post(url, data=data, files=files, timeout=30.0)
-                    if r.status_code == 200:
-                        logger.info("Telegram alert video clip sent successfully")
-                        return
-                    else:
-                        logger.error("Failed to send video via Telegram, attempting fallback", response=r.text)
-
-                # 2. Send Photo Screenshot if available
+                # 1. Send Photo Snapshot first with caption
                 if screenshot_path and os.path.exists(screenshot_path):
                     url = f"https://api.telegram.org/bot{token}/sendPhoto"
                     with open(screenshot_path, "rb") as photo_file:
                         files = {"photo": photo_file}
-                        data = {"chat_id": chat_id, "caption": msg, "parse_mode": "Markdown"}
+                        data = {"chat_id": chat_id, "caption": msg_html, "parse_mode": "HTML"}
                         r = await client.post(url, data=data, files=files, timeout=15.0)
                     if r.status_code == 200:
                         logger.info("Telegram alert screenshot sent successfully")
+                        # If video also exists, optionally upload video clip
+                        if video_path and os.path.exists(video_path):
+                            try:
+                                v_url = f"https://api.telegram.org/bot{token}/sendVideo"
+                                with open(video_path, "rb") as v_file:
+                                    await client.post(
+                                        v_url, 
+                                        data={"chat_id": chat_id, "caption": f"Video clip for {camera_id_val}"}, 
+                                        files={"video": v_file}, 
+                                        timeout=25.0
+                                    )
+                            except Exception:
+                                pass
                         return
                     else:
                         logger.error("Failed to send photo via Telegram, attempting fallback", response=r.text)
 
-                # 3. Fallback to Text Message
+                # 2. If photo wasn't available, attempt video clip
+                if video_path and os.path.exists(video_path):
+                    url = f"https://api.telegram.org/bot{token}/sendVideo"
+                    with open(video_path, "rb") as video_file:
+                        files = {"video": video_file}
+                        data = {"chat_id": chat_id, "caption": msg_html, "parse_mode": "HTML"}
+                        r = await client.post(url, data=data, files=files, timeout=30.0)
+                    if r.status_code == 200:
+                        logger.info("Telegram alert video clip sent successfully")
+                        return
+
+                # 3. Fallback to Text Message (HTML with plain text fallback)
                 url = f"https://api.telegram.org/bot{token}/sendMessage"
-                await client.post(url, json={
+                r = await client.post(url, json={
                     "chat_id": chat_id,
-                    "text": msg,
-                    "parse_mode": "Markdown"
+                    "text": msg_html,
+                    "parse_mode": "HTML"
                 }, timeout=5.0)
+                if r.status_code != 200:
+                    await client.post(url, json={
+                        "chat_id": chat_id,
+                        "text": msg_plain
+                    }, timeout=5.0)
                 logger.info("Telegram alert text notification sent successfully")
             except Exception as e:
                 logger.error("Failed to send Telegram notification", error=str(e))

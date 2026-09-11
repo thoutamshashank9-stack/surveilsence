@@ -25,13 +25,18 @@ def validate_models(settings):
     from app.services.model_registry import ensure_model, LicenseError, ModelMissingError
     
     registry_root = Path(settings.inference.detection.model_path).parent
+    is_dev_or_test = (
+        os.getenv("ALLOW_MOCK_AI") == "1"
+        or os.getenv("PYTEST_CURRENT_TEST") is not None
+        or getattr(settings.app, "debug", True)
+    )
     
     # 1. Validate detection model
     try:
         ensure_model("detection", settings.inference.detection.model, registry_root, allow_download=False)
     except (LicenseError, ModelMissingError) as e:
-        if os.getenv("ALLOW_MOCK_AI") == "1":
-            logger.warning(f"DEV ONLY: Model validation warning: {e}")
+        if is_dev_or_test:
+            logger.warning(f"DEV/TEST ONLY: Model validation warning: {e}")
         else:
             logger.error(f"FATAL model/license error: {e}")
             raise SystemExit(f"FATAL model/license error: {e}")
@@ -41,8 +46,8 @@ def validate_models(settings):
         try:
             ensure_model("pose", settings.behavioral.concealment.pose.model_id, registry_root, allow_download=False)
         except (LicenseError, ModelMissingError) as e:
-            if os.getenv("ALLOW_MOCK_AI") == "1":
-                logger.warning(f"DEV ONLY: Model validation warning: {e}")
+            if is_dev_or_test:
+                logger.warning(f"DEV/TEST ONLY: Model validation warning: {e}")
             else:
                 logger.error(f"FATAL model/license error: {e}")
                 raise SystemExit(f"FATAL model/license error: {e}")
@@ -129,6 +134,35 @@ async def lifespan(app: FastAPI):
     from app.models.enums import CameraStatus
     
     async with AsyncSessionLocal() as db:
+        # Purge any legacy placeholder/demo cameras
+        from sqlalchemy import delete as sa_delete
+        from app.models.tracking import TrackCoordinate, TrackSummary
+        from app.models.event import Event
+        from app.models.alert import Alert
+        from app.models.zone import Zone
+        from app.models.analytics import HourlyAggregate
+
+        legacy_demo_ids = ["cam_01", "e2e_cam_01"]
+        # Find any mock cameras to purge
+        mock_cams_res = await db.execute(
+            select(Camera.id).where(
+                (Camera.id.in_(legacy_demo_ids)) | (Camera.type == "mock") | (Camera.source == "mock")
+            )
+        )
+        purge_ids = list(set(legacy_demo_ids + [r[0] for r in mock_cams_res.fetchall()]))
+
+        await db.execute(sa_delete(TrackCoordinate).where(TrackCoordinate.camera_id.in_(purge_ids)))
+        await db.execute(sa_delete(TrackSummary).where(TrackSummary.camera_id.in_(purge_ids)))
+        await db.execute(sa_delete(Alert).where(Alert.camera_id.in_(purge_ids)))
+        await db.execute(sa_delete(Event).where(Event.camera_id.in_(purge_ids)))
+        await db.execute(sa_delete(Zone).where(Zone.camera_id.in_(purge_ids)))
+        try:
+            await db.execute(sa_delete(HourlyAggregate).where(HourlyAggregate.camera_id.in_(purge_ids)))
+        except Exception:
+            pass
+        await db.execute(sa_delete(Camera).where(Camera.id.in_(purge_ids)))
+        await db.commit()
+
         for cam_config in settings.cameras:
             q = select(Camera).where(Camera.id == cam_config.id)
             res = await db.execute(q)

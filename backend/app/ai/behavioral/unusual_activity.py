@@ -13,13 +13,16 @@ class UnusualActivityState:
         self.last_ts = timestamp
         self.consecutive_fast_count = 0
         self.initial_aspect_ratio: float = 1.0
+        self.max_standing_aspect_ratio: float = 1.0
         if bbox is not None:
             w = max(1.0, bbox[2] - bbox[0])
             h = max(1.0, bbox[3] - bbox[1])
             self.initial_aspect_ratio = h / w
+            self.max_standing_aspect_ratio = self.initial_aspect_ratio
         self.last_bbox = bbox
         self.fall_candidate_time: Optional[float] = None
         self.last_centroid: Optional[Tuple[float, float]] = None
+        self.anchor_centroid: Optional[Tuple[float, float]] = None
 
 class UnusualActivityClassifier(BehavioralClassifierBase):
     """
@@ -75,6 +78,7 @@ class UnusualActivityClassifier(BehavioralClassifierBase):
         if track_id not in self.track_states:
             self.track_states[track_id] = UnusualActivityState(track_id, frame_timestamp, bbox)
             self.track_states[track_id].last_centroid = centroid
+            self.track_states[track_id].anchor_centroid = centroid
             return None
 
         state = self.track_states[track_id]
@@ -104,8 +108,12 @@ class UnusualActivityClassifier(BehavioralClassifierBase):
             h = max(1.0, y2 - y1)
             curr_aspect_ratio = h / w
 
+            if curr_aspect_ratio > 1.2:
+                state.max_standing_aspect_ratio = max(state.max_standing_aspect_ratio, curr_aspect_ratio)
+
             # Drop from standing (H/W > 1.2) to lying flat (H/W < 0.75)
-            if state.initial_aspect_ratio > 1.2 and curr_aspect_ratio < 0.75:
+            standing_prior = (state.initial_aspect_ratio > 1.2) or (state.max_standing_aspect_ratio > 1.2)
+            if standing_prior and curr_aspect_ratio < 0.75:
                 if state.fall_candidate_time is None:
                     state.fall_candidate_time = frame_timestamp
                 elif frame_timestamp - state.fall_candidate_time >= 1.0 and ema_velocity < 0.5:
@@ -123,17 +131,22 @@ class UnusualActivityClassifier(BehavioralClassifierBase):
                     state.fall_candidate_time = None
 
         # 3. Evaluate Wrong-Way Counter-Flow
-        if self.enabled_rules.get("counterflow", True) and self.flow_direction_deg is not None and state.last_centroid:
-            dx = centroid[0] - state.last_centroid[0]
-            dy = centroid[1] - state.last_centroid[1]
+        if self.enabled_rules.get("counterflow", True) and self.flow_direction_deg is not None:
+            if state.anchor_centroid is None:
+                state.anchor_centroid = centroid
+            
+            dx = centroid[0] - state.anchor_centroid[0]
+            dy = centroid[1] - state.anchor_centroid[1]
             dist = math.sqrt(dx**2 + dy**2)
-            if dist > 15.0:  # significant movement step
+            if dist >= 15.0:  # significant movement step
                 # Angle in degrees (0 = right, 90 = down)
                 move_angle = math.degrees(math.atan2(dy, dx)) % 360
                 target_angle = self.flow_direction_deg % 360
                 diff = abs(move_angle - target_angle)
                 if diff > 180:
                     diff = 360 - diff
+                
+                state.anchor_centroid = centroid
                 
                 if diff > 120.0:  # Moving in opposite direction
                     logger.warn("Unusual Counter-Flow Movement Detected!", track_id=track_id, diff=diff)

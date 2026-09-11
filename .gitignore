@@ -126,3 +126,5 @@ docker-compose.override.yml
 *.temp
 pip-log.txt
 pip-delete-this-directory.txt
+.agents/
+scratch/

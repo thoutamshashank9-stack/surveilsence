@@ -38,13 +38,10 @@ class AlertManager:
         Lazily initialize homography, velocity tracking, and behavioral classifiers
         for a camera feed from its database/profile configuration.
         """
-        if camera_id in self.sweethearting_classifiers:
-            return
-
         if cam_cfg is not None:
             self.camera_configs[camera_id] = cam_cfg
-        else:
-            cam_cfg = self.camera_configs.get(camera_id)
+        elif camera_id in self.camera_configs:
+            cam_cfg = self.camera_configs[camera_id]
 
         if not cam_cfg:
             # Find camera config using safe getattr from static settings
@@ -56,7 +53,19 @@ class AlertManager:
                     break
 
         if not cam_cfg:
-            logger.warning("No settings configuration found for camera, skipping behavioral initialization", camera_id=camera_id)
+            # For real cameras added dynamically, construct default CameraConfigItem so all behavioral rules run
+            from app.config import CameraConfigItem
+            cam_cfg = CameraConfigItem(
+                id=camera_id,
+                name=camera_id,
+                source="",
+                type="http",
+                enabled=True,
+                zones=[]
+            )
+            self.camera_configs[camera_id] = cam_cfg
+
+        if camera_id in self.unusual_activity_classifiers and camera_id in self.sweethearting_classifiers:
             return
 
         # 1. Initialize Homography Calibrator (safe checks)
@@ -141,11 +150,13 @@ class AlertManager:
         running_thresh = getattr(unusual_cfg, "running_threshold_mps", 2.5) if unusual_cfg else 2.5
         crowd_count = getattr(unusual_cfg, "crowd_min_count", 4) if unusual_cfg else 4
         crowd_radius = getattr(unusual_cfg, "crowd_radius_m", 2.0) if unusual_cfg else 2.0
+        flow_deg = getattr(unusual_cfg, "flow_direction_deg", None) if unusual_cfg else None
 
         self.unusual_activity_classifiers[camera_id] = UnusualActivityClassifier(
             running_threshold_mps=running_thresh,
             crowd_min_count=crowd_count,
-            crowd_radius_m=crowd_radius
+            crowd_radius_m=crowd_radius,
+            flow_direction_deg=flow_deg
         )
         logger.info("Initialized unusual activity, velocity loitering, and concealment classifiers", camera_id=camera_id)
 
@@ -157,6 +168,25 @@ class AlertManager:
         classifier = self.sweethearting_classifiers.get(camera_id)
         if classifier:
             classifier.register_pos_scan(timestamp, upc)
+
+    def evaluate_frame(
+        self,
+        camera_id: str,
+        frame: Optional[Any] = None,
+        tracked: Optional[sv.Detections] = None,
+        crossings: Optional[List[Tuple[int, str, str]]] = None,
+        zone_states: Optional[Dict[str, Set[int]]] = None,
+        detections: Optional[sv.Detections] = None,
+        line_crossings: Optional[List[Tuple[int, str, str]]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Unified entrypoint for CameraWorker and caller services."""
+        return self.evaluate(
+            camera_id=camera_id,
+            detections=tracked if tracked is not None else detections,
+            zone_states=zone_states or {},
+            line_crossings=crossings if crossings is not None else (line_crossings or []),
+            frame=frame
+        )
 
     def evaluate(
         self,
@@ -202,7 +232,7 @@ class AlertManager:
         
         if line_config and getattr(line_config, "enabled", False):
             for track_id, line_name, direction in line_crossings:
-                if getattr(line_config, "lines", None) is None or line_name in line_config.lines:
+                if not getattr(line_config, "lines", None) or line_name in line_config.lines:
                     if not in_cooldown("line_crossing", track_id, line_config.cooldown_seconds):
                         desc = f"Object P{track_id} crossed {line_name} ({direction})"
                         trigger_alert(
@@ -222,93 +252,78 @@ class AlertManager:
 
         # Process velocity updates for active track bounding boxes
         active_track_velocities = {}
-        if detections.tracker_id is not None and v_tracker:
+        track_bboxes = {}
+        if detections.tracker_id is not None and len(detections.xyxy) > 0:
             for idx, bbox in enumerate(detections.xyxy):
                 track_id = int(detections.tracker_id[idx])
+                track_bboxes[track_id] = bbox
                 # Bottom center coordinate
                 bx = (bbox[0] + bbox[2]) / 2.0
                 by = bbox[3]
                 
                 # Update velocity state
-                vel = v_tracker.update(track_id, bx, by, curr_time)
-                active_track_velocities[track_id] = vel
+                if v_tracker:
+                    vel = v_tracker.update(track_id, bx, by, curr_time)
+                    active_track_velocities[track_id] = vel
+
+        # Zone metadata from active camera configuration
+        cam_cfg = self.camera_configs.get(camera_id)
+        configured_zones = {getattr(z, "name", None): z for z in getattr(cam_cfg, "zones", [])}
+
+        intrusion_config = getattr(alerts_cfg, "intrusion", None) if alerts_cfg else None
+        loiter_config = getattr(alerts_cfg, "loitering", None) if alerts_cfg else None
+        vloiter_cfg = getattr(behavioral_cfg, "velocity_loitering", None) if behavioral_cfg else None
 
         for zone_name, track_ids in zone_states.items():
-            # Get zone properties
-            is_restricted = False
-            cameras = getattr(self.settings, "cameras", [])
-            for cam_cfg in cameras:
-                if getattr(cam_cfg, "id", None) == camera_id:
-                    zones = getattr(cam_cfg, "zones", [])
-                    for z_cfg in zones:
-                        if getattr(z_cfg, "name", None) == zone_name:
-                            is_restricted = getattr(z_cfg, "restricted", False)
-                            break
+            z_obj = configured_zones.get(zone_name)
+            is_restricted = getattr(z_obj, "restricted", False) if z_obj else False
 
             # Intrusion detection
-            intrusion_config = getattr(alerts_cfg, "intrusion", None) if alerts_cfg else None
-            if intrusion_config and getattr(intrusion_config, "enabled", False) and is_restricted:
-                for track_id in track_ids:
-                    if not in_cooldown("intrusion", track_id, intrusion_config.cooldown_seconds):
-                        desc = f"Unauthorized intrusion by P{track_id} in restricted zone '{zone_name}'"
-                        trigger_alert(
-                            alert_type="intrusion",
-                            severity=intrusion_config.severity,
-                            track_id=track_id,
-                            zone_name=zone_name,
-                            desc=desc
-                        )
+            if intrusion_config and getattr(intrusion_config, "enabled", False):
+                configured_intr_zones = getattr(intrusion_config, "zones", None)
+                if is_restricted or (configured_intr_zones and zone_name in configured_intr_zones):
+                    for track_id in track_ids:
+                        if not in_cooldown("intrusion", track_id, intrusion_config.cooldown_seconds):
+                            desc = f"Unauthorized intrusion by P{track_id} in restricted zone '{zone_name}'"
+                            trigger_alert(
+                                alert_type="intrusion",
+                                severity=intrusion_config.severity,
+                                track_id=track_id,
+                                zone_name=zone_name,
+                                desc=desc
+                            )
 
-            # Evaluate loitering rules
-            loiter_config = getattr(alerts_cfg, "loitering", None) if alerts_cfg else None
+            # Evaluate loitering rules (time-based dwell + velocity gating)
             if loiter_config and getattr(loiter_config, "enabled", False):
-                for track_id in track_ids:
-                    # Ground plane velocity computed in Phase 8
-                    vel = active_track_velocities.get(track_id, 0.0)
+                loiter_zones = getattr(loiter_config, "zones", None)
+                if not loiter_zones or zone_name in loiter_zones:
+                    for track_id in track_ids:
+                        # Maintain dwell start timestamp for zone transition duration calculations
+                        key = (camera_id, zone_name, track_id)
+                        if key not in self.dwell_starts:
+                            self.dwell_starts[key] = curr_time
 
-                    # Trigger velocity-gated loitering classifier (Phase 9)
-                    behavioral_cfg = getattr(self.settings, "behavioral", None)
-                    vloiter_cfg = getattr(behavioral_cfg, "velocity_loitering", None) if behavioral_cfg else None
-                    
-                    if loiter_classifier and vloiter_cfg and getattr(vloiter_cfg, "enabled", False):
-                        # Bottom middle
-                        bx = (detections.xyxy[0][0] + detections.xyxy[0][2]) / 2.0 if len(detections) > 0 else 0.0
-                        by = detections.xyxy[0][3] if len(detections) > 0 else 0.0
-                        
-                        anomaly = loiter_classifier.update(
-                            track_id=track_id,
-                            centroid=(bx, by),
-                            frame_timestamp=curr_time,
-                            ema_velocity=vel
-                        )
-                        if anomaly and not in_cooldown("loitering", track_id, loiter_config.cooldown_seconds):
+                        dwell_time = curr_time - self.dwell_starts[key]
+                        vel = active_track_velocities.get(track_id, 0.0)
+
+                        if vloiter_cfg and getattr(vloiter_cfg, "enabled", False):
+                            dwell_thresh = getattr(vloiter_cfg, "dwell_threshold_seconds", 30.0)
+                            vel_thresh = getattr(vloiter_cfg, "velocity_threshold_mps", 0.2)
+                            is_loitering = (dwell_time >= dwell_thresh) and (vel <= vel_thresh)
+                        else:
+                            dwell_thresh = getattr(loiter_config, "threshold_seconds", 60) or 60
+                            is_loitering = dwell_time >= dwell_thresh
+
+                        if is_loitering and not in_cooldown("loitering", track_id, loiter_config.cooldown_seconds):
+                            desc = f"Object P{track_id} loitering in '{zone_name}' for {int(dwell_time)}s"
                             trigger_alert(
                                 alert_type="loitering",
                                 severity=loiter_config.severity,
                                 track_id=track_id,
                                 zone_name=zone_name,
-                                desc=anomaly["description"],
-                                metadata={"dwell_time_seconds": curr_time - loiter_classifier.dwell_starts.get(track_id, curr_time), "velocity_mps": vel}
+                                desc=desc,
+                                metadata={"dwell_time_seconds": dwell_time, "velocity_mps": vel}
                             )
-                    else:
-                        # Standard simple dwell loitering fallback
-                        key = (camera_id, zone_name, track_id)
-                        if key not in self.dwell_starts:
-                            self.dwell_starts[key] = curr_time
-                        else:
-                            dwell_time = curr_time - self.dwell_starts[key]
-                            thresh = getattr(loiter_config, "threshold_seconds", 60) or 60
-                            if dwell_time >= thresh:
-                                if not in_cooldown("loitering", track_id, loiter_config.cooldown_seconds):
-                                    desc = f"Object P{track_id} loitering in '{zone_name}' for {int(dwell_time)}s"
-                                    trigger_alert(
-                                        alert_type="loitering",
-                                        severity=loiter_config.severity,
-                                        track_id=track_id,
-                                        zone_name=zone_name,
-                                        desc=desc,
-                                        metadata={"dwell_time_seconds": dwell_time}
-                                    )
 
         # 3. Evaluate Cashier Sweethearting Anomalies
         sweet_cfg = getattr(behavioral_cfg, "sweethearting", None) if behavioral_cfg else None

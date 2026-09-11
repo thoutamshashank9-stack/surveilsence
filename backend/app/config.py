@@ -186,6 +186,7 @@ class UnusualActivityRuleConfig(BaseModel):
     running_threshold_mps: float = 2.5
     crowd_min_count: int = 4
     crowd_radius_m: float = 2.0
+    flow_direction_deg: Optional[float] = None
 
 class BehavioralConfig(BaseModel):
     sweethearting: SweetheartingRuleConfig = SweetheartingRuleConfig()

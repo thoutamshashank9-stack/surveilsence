@@ -60,6 +60,7 @@ class CameraWorker:
         
         self.running = False
         self.thread: Optional[threading.Thread] = None
+        self._background_tasks: Set[asyncio.Task] = set()
 
     def start(self) -> None:
         if self.running:
@@ -110,23 +111,22 @@ class CameraWorker:
                 # Publish frame analysis event (for web preview & UI stream)
                 await self._publish_frame_analysis(tracked)
                 
-                # 4. Zone & Line Crossing Evaluation
-                zone_states = self.zone_engine.evaluate_zones(tracked)
-                line_crossings = self._evaluate_line_crossings(tracked)
+                # 4. Evaluate Line Crossings
+                crossings = self._evaluate_line_crossings(tracked)
                 
-                # 5. Zone transition events (Entry / Exit / Dwell)
+                # 5. Evaluate Zones (Entry/Exit/Dwell)
+                zone_states = self.zone_engine.evaluate_zones(tracked)
                 await self._evaluate_zone_transitions(zone_states)
                 
-                # 6. Evaluate Alerts
-                alerts = self.alert_manager.evaluate(
+                # 6. Evaluate Rule-based Alerts
+                alerts = self.alert_manager.evaluate_frame(
                     camera_id=self.camera_id,
-                    detections=tracked,
-                    zone_states=zone_states,
-                    line_crossings=line_crossings,
-                    frame=frame
+                    frame=frame,
+                    tracked=tracked,
+                    crossings=crossings,
+                    zone_states=zone_states
                 )
                 
-                # Emit alerts to database/event bus
                 for alert in alerts:
                     import uuid
                     alert_uuid = uuid.uuid4().hex
@@ -138,8 +138,10 @@ class CameraWorker:
                     if tid is not None and tid in self.global_ids:
                         alert["metadata_json"]["global_person_id"] = self.global_ids[tid]
                     
-                    # Save media screenshot + video clip and publish
-                    asyncio.create_task(self._save_media_and_publish_alert(alert, frame.copy()))
+                    # Save media screenshot + video clip and publish (tracked to ensure clean shutdown)
+                    task = asyncio.create_task(self._save_media_and_publish_alert(alert, frame.copy()))
+                    self._background_tasks.add(task)
+                    task.add_done_callback(self._background_tasks.discard)
 
             except Exception as e:
                 logger.error("Error in camera processing loop", camera_id=self.camera_id, error=str(e))
@@ -148,6 +150,10 @@ class CameraWorker:
             elapsed = time.time() - start_time
             sleep_time = max(0.001, frame_delay - elapsed)
             await asyncio.sleep(sleep_time)
+
+        # Await any remaining background tasks before closing loop
+        if self._background_tasks:
+            await asyncio.gather(*self._background_tasks, return_exceptions=True)
 
     async def _publish_frame_analysis(self, tracked: sv.Detections) -> None:
         """Publish detections for frontend real-time tracking display."""

@@ -411,22 +411,13 @@ export const Settings: React.FC = () => {
     setNotificationMessage('');
     setNotificationError('');
     try {
-      const res = await fetch('/api/v1/system/notifications/test-telegram', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          bot_token: notificationsConfig.telegram.bot_token,
-          chat_id: notificationsConfig.telegram.chat_id
-        })
+      const res = await api.testTelegram({
+        bot_token: notificationsConfig.telegram.bot_token,
+        chat_id: notificationsConfig.telegram.chat_id
       });
-      const data = await res.json();
-      if (res.ok) {
-        setNotificationMessage('✓ Success: Test warning snapshot sent to your Telegram bot!');
-      } else {
-        setNotificationError(`✗ Error: ${data.detail || 'Failed to send Telegram test image'}`);
-      }
+      setNotificationMessage(`✓ Success: ${res.message || 'Test warning snapshot sent to your Telegram bot!'}`);
     } catch (err: any) {
-      setNotificationError(`✗ Network Error: ${err.message}`);
+      setNotificationError(`✗ Error: ${err.message || 'Failed to send Telegram test image'}`);
     } finally {
       setTestingTelegram(false);
     }
@@ -927,11 +918,10 @@ export const Settings: React.FC = () => {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                   <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Camera Type</label>
                   <select name="type" className="select" value={formData.type} onChange={handleInputChange}>
-                    <option value="http">HTTP (MJPEG)</option>
-                    <option value="rtsp">RTSP (H.264)</option>
+                    <option value="http">HTTP (MJPEG / IP Webcam)</option>
+                    <option value="rtsp">RTSP (H.264 IP Camera)</option>
                     <option value="usb">USB Camera</option>
-                    <option value="file">Local File</option>
-                    <option value="mock">Simulated Mock</option>
+                    <option value="file">Local Video Stream</option>
                   </select>
                 </div>
 
