@@ -48,6 +48,41 @@ class CameraStream:
         self.status = CameraStatus.OFFLINE
         logger.info("Camera stream thread stopped", camera_id=self.camera_id)
 
+    def _resolve_candidate_sources(self) -> list:
+        """Resolve common IP Webcam, DroidCam, and RTSP stream variations if base URL provided."""
+        sources = [self.source]
+        s = self.source.strip()
+        
+        import re
+        ip_match = re.search(r'(?:https?|rtsp)://([^/]+)(?:/(.*))?', s, re.IGNORECASE)
+        if ip_match:
+            host_port = ip_match.group(1)
+            path = (ip_match.group(2) or "").strip()
+            
+            # If path is empty, root, or missing specific video extension
+            if not path or path == "/":
+                candidates = [
+                    f"rtsp://{host_port}/h264_pcm.sdp",
+                    f"rtsp://{host_port}/h264_ulaw.sdp",
+                    f"rtsp://{host_port}/h264_aac.sdp",
+                    f"http://{host_port}/video",
+                    f"http://{host_port}/videofeed",
+                    f"rtsp://{host_port}/live",
+                ]
+                for c in candidates:
+                    if c not in sources:
+                        sources.append(c)
+            elif s.lower().startswith("https://"):
+                sources.append(f"http://{host_port}/{path}")
+                sources.append(f"rtsp://{host_port}/{path}")
+                if "8080" in host_port and not path.endswith(".sdp"):
+                    sources.append(f"rtsp://{host_port}/h264_pcm.sdp")
+                    sources.append(f"http://{host_port}/video")
+            elif s.lower().startswith("http://") and "8080" in host_port and not path.endswith((".sdp", "video", "videofeed")):
+                sources.append(f"rtsp://{host_port}/h264_pcm.sdp")
+                sources.append(f"http://{host_port}/video")
+        return sources
+
     def _connect(self) -> bool:
         self._disconnect()
         if self.cam_type == "mock":
@@ -55,35 +90,47 @@ class CameraStream:
             logger.info("Camera connected (mock mode)", camera_id=self.camera_id)
             return True
             
-        try:
-            logger.info("Connecting to camera stream...", camera_id=self.camera_id, source=self.source)
-            if self.source.isdigit():
-                # USB Camera
-                self.cap = cv2.VideoCapture(int(self.source))
-            else:
-                if self.source.lower().startswith("rtsp://"):
-                    import os
-                    os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
-                    self.cap = cv2.VideoCapture(self.source, cv2.CAP_FFMPEG)
+        candidate_sources = self._resolve_candidate_sources()
+        for src in candidate_sources:
+            try:
+                logger.info("Connecting to camera stream...", camera_id=self.camera_id, source=src)
+                if src.isdigit():
+                    # USB Camera
+                    self.cap = cv2.VideoCapture(int(src))
                 else:
-                    self.cap = cv2.VideoCapture(self.source)
-                
-            if self.cap.isOpened():
-                try:
-                    self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-                except Exception:
-                    pass
-                self.status = CameraStatus.ONLINE
-                logger.info("Camera connected successfully", camera_id=self.camera_id)
-                return True
-            else:
-                self.status = CameraStatus.ERROR
-                logger.error("Failed to open camera source", camera_id=self.camera_id)
-                return False
-        except Exception as e:
-            self.status = CameraStatus.ERROR
-            logger.error("Error during camera connection", camera_id=self.camera_id, error=str(e))
-            return False
+                    if src.lower().startswith("rtsp://"):
+                        import os
+                        os.environ["OPENCV_FFMPEG_CAPTURE_OPTIONS"] = "rtsp_transport;tcp"
+                        self.cap = cv2.VideoCapture(src, cv2.CAP_FFMPEG)
+                    else:
+                        self.cap = cv2.VideoCapture(src)
+                    
+                if self.cap and self.cap.isOpened():
+                    ret, test_frame = self.cap.read()
+                    if ret and test_frame is not None:
+                        try:
+                            self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+                        except Exception:
+                            pass
+                        with self._lock:
+                            self.frame = test_frame
+                            self.last_frame_time = time.time()
+                        self.source = src
+                        self.status = CameraStatus.ONLINE
+                        logger.info("Camera connected successfully", camera_id=self.camera_id, active_source=src)
+                        return True
+                    else:
+                        self.cap.release()
+                        self.cap = None
+            except Exception as e:
+                logger.debug("Candidate stream connection failed", camera_id=self.camera_id, source=src, error=str(e))
+                if self.cap:
+                    self.cap.release()
+                    self.cap = None
+
+        self.status = CameraStatus.ERROR
+        logger.error("Failed to open camera source candidates", camera_id=self.camera_id, candidates=candidate_sources)
+        return False
 
     def _disconnect(self) -> None:
         if self.cap:

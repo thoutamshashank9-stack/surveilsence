@@ -362,11 +362,26 @@ export const Settings: React.FC = () => {
 
     setSubmitting(true);
     try {
+      let resolvedSource = formData.source.trim();
+      let resolvedType = formData.type;
+      
+      // Auto-normalize IP Webcam / phone stream base addresses
+      if (/^https?:\/\/[0-9.]+(?::[0-9]+)?\/?$/i.test(resolvedSource)) {
+        const cleanBase = resolvedSource.replace(/\/$/, '');
+        if (cleanBase.endsWith(':8080')) {
+          resolvedSource = cleanBase.replace(/^https?:\/\//i, 'rtsp://') + '/h264_pcm.sdp';
+          resolvedType = 'rtsp';
+        } else if (cleanBase.endsWith(':4747')) {
+          resolvedSource = cleanBase.replace(/^https?:\/\//i, 'http://') + '/video';
+          resolvedType = 'http';
+        }
+      }
+
       const payload = {
         id: formData.id.trim(),
         name: formData.name.trim(),
-        source: formData.source.trim(),
-        type: formData.type,
+        source: resolvedSource,
+        type: resolvedType,
         enabled: formData.enabled,
         stream_type: formData.stream_type,
         fps_cap: formData.fps_cap,
@@ -902,16 +917,19 @@ export const Settings: React.FC = () => {
               </div>
 
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Source Link (RTSP/HTTP MJPEG URL or File Path)</label>
+                <label style={{ fontSize: '0.8rem', color: 'var(--text-secondary)' }}>Source Link (RTSP / HTTP Stream URL)</label>
                 <input 
                   type="text" 
                   name="source" 
                   className="input" 
-                  placeholder="http://192.168.1.50:8080/video" 
+                  placeholder="rtsp://192.168.0.4:8080/h264_pcm.sdp" 
                   value={formData.source}
                   onChange={handleInputChange}
                   required
                 />
+                <span style={{ fontSize: '0.72rem', color: 'var(--accent-blue)', opacity: 0.9 }}>
+                  💡 IP Webcam App: use <code>rtsp://192.168.0.4:8080/h264_pcm.sdp</code> (RTSP) or <code>http://192.168.0.4:8080/video</code> (HTTP)
+                </span>
               </div>
 
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
