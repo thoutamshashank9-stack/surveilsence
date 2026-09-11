@@ -102,19 +102,14 @@ def download_file_with_resume(model_id: str, url: str, dest_path: Path, max_retr
             time.sleep(2 ** attempt)
 
 def ensure_model(task: str, model_id: str, registry_root: Path, allow_download: bool = True) -> Path:
-    meta_path = registry_root / task / "metadata.json"
-    if not meta_path.exists():
-        # Fallback to check if a nested directory style exists
-        nested_meta_path = registry_root / task / model_id / "metadata.json"
-        if nested_meta_path.exists():
-            meta_path = nested_meta_path
-        else:
-            # Fallback to general metadata in registry root (e.g. for detection)
-            general_meta_path = registry_root / "metadata.json"
-            if general_meta_path.exists() and task == "detection":
-                meta_path = general_meta_path
-            else:
-                raise ModelMissingError(f"Missing metadata for task/model: {task}/{model_id} at {meta_path}")
+    if (registry_root / "metadata.json").exists():
+        meta_path = registry_root / "metadata.json"
+    elif (registry_root / task / "metadata.json").exists():
+        meta_path = registry_root / task / "metadata.json"
+    elif (registry_root / task / model_id / "metadata.json").exists():
+        meta_path = registry_root / task / model_id / "metadata.json"
+    else:
+        raise ModelMissingError(f"Missing metadata for task/model: {task}/{model_id} at {registry_root / task / 'metadata.json'}")
 
     try:
         with open(meta_path, "r") as f:
